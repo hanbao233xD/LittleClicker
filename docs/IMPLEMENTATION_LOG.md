@@ -17,4 +17,5 @@
 - 新增多靶标可视化与拖拽定位：默认添加 2 个靶标，支持继续添加、拖拽和删除；靶标序号按添加顺序稳定展示，删除后自动重排避免重复序号。
 - 首页“开启悬浮窗”按钮接入服务启动逻辑，并保留权限前置校验。
 - Manifest 新增 `FloatingWindowService` 声明；Gradle 新增 `androidx.lifecycle:lifecycle-service` 依赖。
+- 修复悬浮窗崩溃：为 `Service` 中 `ComposeView` 显式绑定 `setViewTreeLifecycleOwner(this@FloatingWindowService)`，解决 `ViewTreeLifecycleOwner not found` 异常。
 - 编译验证：`./gradlew :app:assembleDebug` 通过。

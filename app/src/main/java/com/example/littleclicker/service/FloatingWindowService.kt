@@ -41,8 +41,7 @@ import androidx.compose.ui.platform.ViewCompositionStrategy
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.LifecycleService
-import androidx.lifecycle.ViewTreeLifecycleOwner
-import androidx.lifecycle.ViewTreeViewModelStoreOwner
+import androidx.lifecycle.setViewTreeLifecycleOwner
 import kotlin.math.roundToInt
 
 class FloatingWindowService : LifecycleService() {
@@ -82,8 +81,7 @@ class FloatingWindowService : LifecycleService() {
 
         windowManager = getSystemService(WINDOW_SERVICE) as WindowManager
         composeView = ComposeView(this).apply {
-            ViewTreeLifecycleOwner.set(this, this@FloatingWindowService)
-            ViewTreeViewModelStoreOwner.set(this, this@FloatingWindowService)
+            setViewTreeLifecycleOwner(this@FloatingWindowService)
             setViewCompositionStrategy(ViewCompositionStrategy.DisposeOnDetachedFromWindow)
             setContent {
                 MaterialTheme {
