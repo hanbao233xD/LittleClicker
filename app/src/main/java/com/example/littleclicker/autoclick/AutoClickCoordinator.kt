@@ -179,6 +179,12 @@ object AutoClickCoordinator {
         }
     }
 
+    fun updateRunMode(runMode: AutoClickRunMode) {
+        updateProfile { current ->
+            current.copy(runMode = runMode)
+        }
+    }
+
     fun clearScheduleTime() {
         cancelSchedule()
         updateProfile { current -> current.copy(startAtMillis = null) }

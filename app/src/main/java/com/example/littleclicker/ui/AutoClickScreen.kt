@@ -16,7 +16,6 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
-import androidx.compose.material3.Switch
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.collectAsState
@@ -36,12 +35,14 @@ import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import com.example.littleclicker.ConfigManageActivity
 import com.example.littleclicker.autoclick.AutoClickCoordinator
-import com.example.littleclicker.autoclick.AutoClickRunState
+import com.example.littleclicker.autoclick.AutoClickRunMode
 import com.example.littleclicker.service.FloatingWindowService
 import top.yukonga.miuix.kmp.basic.Button
 import top.yukonga.miuix.kmp.basic.Card
 import top.yukonga.miuix.kmp.basic.CardDefaults
 import top.yukonga.miuix.kmp.basic.Text
+import top.yukonga.miuix.kmp.extra.SuperSwitch
+import top.yukonga.miuix.kmp.extra.WindowDropdown
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 
 private data class PermissionStatus(
@@ -58,6 +59,7 @@ internal fun AutoClickScreen(innerPadding: PaddingValues) {
     var refreshToken by remember { mutableStateOf(0) }
 
     val profile by AutoClickCoordinator.profile.collectAsState()
+    val overlayEnabled by FloatingWindowService.overlayVisible.collectAsState()
     val runtime by AutoClickCoordinator.runtime.collectAsState()
 
     DisposableEffect(lifecycleOwner) {
@@ -96,6 +98,11 @@ internal fun AutoClickScreen(innerPadding: PaddingValues) {
     val pendingStatuses = statuses.filterNot { it.granted }
     val allGranted = pendingStatuses.isEmpty()
     val expiredSchedule = profile.startAtMillis?.let { it <= System.currentTimeMillis() } == true
+    val runModeItems = listOf("运行一次", "循环运行直至手动停止")
+    val selectedRunModeIndex = when (profile.runMode) {
+        AutoClickRunMode.RunOnce -> 0
+        AutoClickRunMode.LoopUntilStopped -> 1
+    }
 
     LazyColumn(
         modifier = Modifier
@@ -216,14 +223,7 @@ internal fun AutoClickScreen(innerPadding: PaddingValues) {
                             verticalAlignment = Alignment.CenterVertically
                         ) {
                             Text("定时已过期", color = Color(0xFFB00020))
-                            Button(onClick = {
-                                val started = AutoClickCoordinator.startNow()
-                                if (!started) {
-                                    Toast.makeText(context, "立即开始失败，请检查无障碍服务", Toast.LENGTH_SHORT).show()
-                                }
-                            }) {
-                                Text("立即开始")
-                            }
+                            Text("请通过悬浮窗启动", color = MiuixTheme.colorScheme.onBackgroundVariant)
                         }
                     }
                 }
@@ -245,52 +245,49 @@ internal fun AutoClickScreen(innerPadding: PaddingValues) {
                         .padding(14.dp),
                     verticalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
-                    Text("运行控制")
+                    Text("悬浮窗与运行方式")
                     Text(
                         text = "状态：${runtime.state} ${runtime.message ?: ""}",
                         color = MiuixTheme.colorScheme.onBackgroundVariant
                     )
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.SpaceBetween
-                    ) {
-                        Text("运行开关")
-                        val runningEnabled = runtime.state == AutoClickRunState.Running ||
-                            runtime.state == AutoClickRunState.Paused
-                        Switch(
-                            checked = runningEnabled,
-                            onCheckedChange = { shouldRun ->
-                                val success = if (shouldRun) {
-                                    when (runtime.state) {
-                                        AutoClickRunState.Paused -> AutoClickCoordinator.resume()
-                                        AutoClickRunState.Running -> true
-                                        else -> AutoClickCoordinator.startNow()
-                                    }
-                                } else {
-                                    AutoClickCoordinator.stop()
+                    SuperSwitch(
+                        checked = overlayEnabled,
+                        onCheckedChange = { shouldEnable ->
+                            if (shouldEnable) {
+                                if (!Settings.canDrawOverlays(context)) {
+                                    openOverlaySettings(context)
+                                    Toast.makeText(context, "请先授予悬浮窗权限", Toast.LENGTH_SHORT).show()
+                                    return@SuperSwitch
                                 }
-                                if (!success) {
-                                    Toast.makeText(context, "切换失败，请检查权限与服务状态", Toast.LENGTH_SHORT).show()
-                                }
-                            },
-                            enabled = allGranted
-                        )
-                    }
-                    Button(
-                        onClick = {
-                            if (!Settings.canDrawOverlays(context)) {
-                                openOverlaySettings(context)
-                                Toast.makeText(context, "请先授予悬浮窗权限", Toast.LENGTH_SHORT).show()
-                                return@Button
+                                FloatingWindowService.startAutoClickOverlay(context)
+                                Toast.makeText(context, "自动点击悬浮窗已启动", Toast.LENGTH_SHORT).show()
+                            } else {
+                                FloatingWindowService.stopAutoClickOverlay(context)
+                                Toast.makeText(context, "自动点击悬浮窗已关闭", Toast.LENGTH_SHORT).show()
                             }
-                            FloatingWindowService.startAutoClickOverlay(context)
-                            Toast.makeText(context, "自动点击悬浮窗已启动", Toast.LENGTH_SHORT).show()
                         },
-                        enabled = allGranted,
-                        modifier = Modifier.fillMaxWidth()
-                    ) {
-                        Text("开启自动点击悬浮窗")
+                        title = "悬浮窗开关",
+                        summary = "自动点击的开始/停止请在悬浮窗中操作"
+                    )
+                    WindowDropdown(
+                        items = runModeItems,
+                        selectedIndex = selectedRunModeIndex,
+                        title = "运行方式",
+                        summary = "运行方式将保存到当前配置",
+                        onSelectedIndexChange = { index ->
+                            val mode = if (index == 0) {
+                                AutoClickRunMode.RunOnce
+                            } else {
+                                AutoClickRunMode.LoopUntilStopped
+                            }
+                            AutoClickCoordinator.updateRunMode(mode)
+                        }
+                    )
+                    if (!allGranted) {
+                        Text(
+                            text = "提示：建议先完成全部权限授权，再进行自动点击。",
+                            color = MiuixTheme.colorScheme.onBackgroundVariant
+                        )
                     }
                 }
             }

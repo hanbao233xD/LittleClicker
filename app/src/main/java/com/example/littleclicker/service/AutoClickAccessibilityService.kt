@@ -6,7 +6,9 @@ import android.graphics.Path
 import android.view.accessibility.AccessibilityEvent
 import com.example.littleclicker.autoclick.AutoClickCoordinator
 import com.example.littleclicker.autoclick.AutoClickProfile
+import com.example.littleclicker.autoclick.AutoClickRunMode
 import com.example.littleclicker.autoclick.AutoClickRunState
+import com.example.littleclicker.autoclick.AutoClickStep
 import com.example.littleclicker.autoclick.expandExecutionSteps
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
@@ -141,6 +143,17 @@ class AutoClickAccessibilityService : AccessibilityService() {
             throw IllegalStateException("没有可执行的点击步骤")
         }
 
+        when (profile.runMode) {
+            AutoClickRunMode.RunOnce -> executeStepsOnce(steps)
+            AutoClickRunMode.LoopUntilStopped -> {
+                while (currentCoroutineContext().isActive) {
+                    executeStepsOnce(steps)
+                }
+            }
+        }
+    }
+
+    private suspend fun executeStepsOnce(steps: List<AutoClickStep>) {
         for (step in steps) {
             ensureNotCancelled()
             waitIfPaused()

@@ -16,6 +16,7 @@ class AutoClickSerializationTest {
                 AutoClickPoint(id = 2, x = 500, y = 900, delayMs = 50, touchDurationMs = 20, repeatCount = 1)
             ),
             cycleCount = 3,
+            runMode = AutoClickRunMode.LoopUntilStopped,
             startAtMillis = 1_735_000_000_000,
             updatedAt = 1_735_100_000_000
         )
@@ -27,6 +28,7 @@ class AutoClickSerializationTest {
         assertEquals(profile.name, restored.name)
         assertEquals(profile.points, restored.points)
         assertEquals(profile.cycleCount, restored.cycleCount)
+        assertEquals(profile.runMode, restored.runMode)
         assertEquals(profile.startAtMillis, restored.startAtMillis)
     }
 

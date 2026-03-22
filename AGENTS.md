@@ -7,7 +7,7 @@
 2. 如果 `AI_MEMORY.md` 不存在，再阅读 `docs/_index.md`（若存在）。
 3. 再根据用户问题按需读取 `docs/` 下相关原文文件。
 4. 不要默认全量读取 `docs/` 所有文件，除非用户明确要求“全量阅读”。
-
+5.如果未特殊说明，所有ui使用miuix开发
 ## Missing File Handling
 如果 `AI_MEMORY.md` 与 `docs/_index.md` 都不存在：
 

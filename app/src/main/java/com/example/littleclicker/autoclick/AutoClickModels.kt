@@ -14,6 +14,7 @@ data class AutoClickProfile(
     val name: String = "默认自动点击配置",
     val points: List<AutoClickPoint> = emptyList(),
     val cycleCount: Int = 1,
+    val runMode: AutoClickRunMode = AutoClickRunMode.RunOnce,
     val startAtMillis: Long? = null,
     val updatedAt: Long = System.currentTimeMillis(),
 )
@@ -33,6 +34,11 @@ enum class AutoClickRunState {
     Paused,
     Completed,
     Failed,
+}
+
+enum class AutoClickRunMode {
+    RunOnce,
+    LoopUntilStopped,
 }
 
 data class AutoClickRuntime(

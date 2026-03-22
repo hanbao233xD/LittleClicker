@@ -29,9 +29,9 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.AddCircleOutline
 import androidx.compose.material.icons.filled.Close
-import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Save
+import androidx.compose.material.icons.filled.Stop
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Icon
@@ -65,6 +65,9 @@ import com.example.littleclicker.autoclick.AutoClickCoordinator
 import com.example.littleclicker.autoclick.AutoClickPoint
 import com.example.littleclicker.autoclick.AutoClickRunState
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import kotlin.math.roundToInt
 
@@ -123,6 +126,7 @@ class FloatingWindowService : LifecycleService() {
         if (panelView != null) return
         if (!Settings.canDrawOverlays(this)) {
             Toast.makeText(this, "请先授予悬浮窗权限", Toast.LENGTH_SHORT).show()
+            _overlayVisible.value = false
             stopSelf()
             return
         }
@@ -130,6 +134,7 @@ class FloatingWindowService : LifecycleService() {
         windowManager = getSystemService(WINDOW_SERVICE) as WindowManager
         createPanelOverlay()
         syncPointOverlays(AutoClickCoordinator.profile.value.points)
+        _overlayVisible.value = true
 
         profileCollectJob?.cancel()
         profileCollectJob = lifecycleScope.launch {
@@ -169,8 +174,7 @@ class FloatingWindowService : LifecycleService() {
                         },
                         onToggleRun = {
                             val changed = when (runtime.state) {
-                                AutoClickRunState.Running -> AutoClickCoordinator.pause()
-                                AutoClickRunState.Paused -> AutoClickCoordinator.resume()
+                                AutoClickRunState.Running, AutoClickRunState.Paused -> AutoClickCoordinator.stop()
                                 else -> AutoClickCoordinator.startNow()
                             }
                             if (!changed) {
@@ -458,6 +462,7 @@ class FloatingWindowService : LifecycleService() {
             runCatching { windowManager.removeView(overlay.view) }
         }
         pointViews.clear()
+        _overlayVisible.value = false
     }
 
     private fun setPointOverlaysTouchable(touchable: Boolean) {
@@ -480,6 +485,9 @@ class FloatingWindowService : LifecycleService() {
     companion object {
         const val ACTION_START = "com.example.littleclicker.action.START_FLOATING_WINDOW"
         const val ACTION_STOP = "com.example.littleclicker.action.STOP_FLOATING_WINDOW"
+
+        private val _overlayVisible = MutableStateFlow(false)
+        val overlayVisible: StateFlow<Boolean> = _overlayVisible.asStateFlow()
 
         fun start(context: Context) {
             context.startService(Intent(context, FloatingWindowService::class.java).apply {
@@ -569,8 +577,16 @@ private fun FloatingPanel(
                 onClick = onAddPoint
             )
             PanelActionButton(
-                icon = if (runState == AutoClickRunState.Running) Icons.Filled.Pause else Icons.Filled.PlayArrow,
-                contentDescription = if (runState == AutoClickRunState.Running) "暂停" else "开始/继续",
+                icon = if (runState == AutoClickRunState.Running || runState == AutoClickRunState.Paused) {
+                    Icons.Filled.Stop
+                } else {
+                    Icons.Filled.PlayArrow
+                },
+                contentDescription = if (runState == AutoClickRunState.Running || runState == AutoClickRunState.Paused) {
+                    "停止"
+                } else {
+                    "开始"
+                },
                 onClick = onToggleRun
             )
             PanelActionButton(
