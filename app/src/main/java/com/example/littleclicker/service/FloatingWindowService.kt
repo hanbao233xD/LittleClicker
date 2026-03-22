@@ -15,33 +15,49 @@ import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material3.Button
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.AddCircleOutline
+import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.Pause
+import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material.icons.filled.Save
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.ComposeView
 import androidx.compose.ui.platform.ViewCompositionStrategy
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleRegistry
 import androidx.lifecycle.LifecycleService
 import androidx.lifecycle.setViewTreeLifecycleOwner
+import androidx.savedstate.SavedStateRegistry
+import androidx.savedstate.SavedStateRegistryController
+import androidx.savedstate.SavedStateRegistryOwner
+import androidx.savedstate.setViewTreeSavedStateRegistryOwner
+import com.example.littleclicker.autoclick.AutoClickCoordinator
+import com.example.littleclicker.autoclick.AutoClickPoint
+import com.example.littleclicker.autoclick.AutoClickRunState
 import kotlin.math.roundToInt
 
 class FloatingWindowService : LifecycleService() {
@@ -49,10 +65,14 @@ class FloatingWindowService : LifecycleService() {
     private lateinit var windowManager: WindowManager
     private var composeView: ComposeView? = null
 
-    private val targets = mutableStateListOf<TargetPoint>()
     private var panelOffset by mutableStateOf(IntOffset(72, 180))
-    private var isPlaying by mutableStateOf(false)
-    private var nextTargetId = 1
+    private lateinit var viewTreeSavedStateOwner: OverlaySavedStateOwner
+
+    override fun onCreate() {
+        super.onCreate()
+        AutoClickCoordinator.initialize(this)
+        viewTreeSavedStateOwner = OverlaySavedStateOwner()
+    }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         when (intent?.action) {
@@ -60,6 +80,7 @@ class FloatingWindowService : LifecycleService() {
                 stopSelf()
                 return Service.START_NOT_STICKY
             }
+
             ACTION_START, null -> showOverlayIfNeeded()
             else -> showOverlayIfNeeded()
         }
@@ -68,6 +89,9 @@ class FloatingWindowService : LifecycleService() {
 
     override fun onDestroy() {
         removeOverlay()
+        if (::viewTreeSavedStateOwner.isInitialized) {
+            viewTreeSavedStateOwner.markDestroyed()
+        }
         super.onDestroy()
     }
 
@@ -82,41 +106,47 @@ class FloatingWindowService : LifecycleService() {
         windowManager = getSystemService(WINDOW_SERVICE) as WindowManager
         composeView = ComposeView(this).apply {
             setViewTreeLifecycleOwner(this@FloatingWindowService)
+            setViewTreeSavedStateRegistryOwner(viewTreeSavedStateOwner)
             setViewCompositionStrategy(ViewCompositionStrategy.DisposeOnDetachedFromWindow)
             setContent {
                 MaterialTheme {
+                    val profile by AutoClickCoordinator.profile.collectAsState()
+                    val runtime by AutoClickCoordinator.runtime.collectAsState()
                     OverlayContent(
-                        targets = targets,
+                        points = profile.points,
                         panelOffset = panelOffset,
-                        isPlaying = isPlaying,
+                        runState = runtime.state,
+                        runMessage = runtime.message,
                         onPanelMoved = { drag ->
                             panelOffset = IntOffset(panelOffset.x + drag.x, panelOffset.y + drag.y)
                         },
                         onTargetMoved = { id, drag ->
-                            val index = targets.indexOfFirst { it.id == id }
-                            if (index >= 0) {
-                                val current = targets[index]
-                                targets[index] = current.copy(
-                                    offset = IntOffset(
-                                        current.offset.x + drag.x,
-                                        current.offset.y + drag.y
-                                    )
-                                )
-                            }
+                            AutoClickCoordinator.movePointBy(id, drag.x, drag.y)
                         },
                         onAddTarget = {
-                            addTarget()
-                            Toast.makeText(this@FloatingWindowService, "已添加靶标", Toast.LENGTH_SHORT).show()
+                            AutoClickCoordinator.addPoint()
+                            Toast.makeText(this@FloatingWindowService, "已添加点击点", Toast.LENGTH_SHORT).show()
                         },
                         onRemoveTarget = { id ->
-                            targets.removeAll { it.id == id }
+                            AutoClickCoordinator.removePoint(id)
                         },
-                        onRecord = {
-                            Toast.makeText(this@FloatingWindowService, "录制功能待接入（P4）", Toast.LENGTH_SHORT).show()
+                        onToggleRun = {
+                            val changed = when (runtime.state) {
+                                AutoClickRunState.Running -> AutoClickCoordinator.pause()
+                                AutoClickRunState.Paused -> AutoClickCoordinator.resume()
+                                else -> AutoClickCoordinator.startNow()
+                            }
+                            if (!changed) {
+                                Toast.makeText(
+                                    this@FloatingWindowService,
+                                    "操作失败，请先检查无障碍服务",
+                                    Toast.LENGTH_SHORT
+                                ).show()
+                            }
                         },
-                        onTogglePlay = {
-                            isPlaying = !isPlaying
-                            val text = if (isPlaying) "已开始播放（占位）" else "已暂停（占位）"
+                        onSave = {
+                            val result = AutoClickCoordinator.saveProfile()
+                            val text = if (result.isSuccess) "自动点击配置已保存" else "保存失败：${result.exceptionOrNull()?.message}"
                             Toast.makeText(this@FloatingWindowService, text, Toast.LENGTH_SHORT).show()
                         },
                         onClose = { stopSelf() }
@@ -140,21 +170,12 @@ class FloatingWindowService : LifecycleService() {
             PixelFormat.TRANSLUCENT
         )
         windowManager.addView(composeView, layoutParams)
-        if (targets.isEmpty()) {
-            addTarget()
-            addTarget()
-        }
     }
 
     private fun removeOverlay() {
         val view = composeView ?: return
         windowManager.removeView(view)
         composeView = null
-    }
-
-    private fun addTarget() {
-        val base = 220 + targets.size * 110
-        targets.add(TargetPoint(id = nextTargetId++, offset = IntOffset(base, base)))
     }
 
     companion object {
@@ -172,43 +193,65 @@ class FloatingWindowService : LifecycleService() {
                 action = ACTION_STOP
             })
         }
+
+        fun startAutoClickOverlay(context: Context) = start(context)
+
+        fun stopAutoClickOverlay(context: Context) = stop(context)
+    }
+
+    private inner class OverlaySavedStateOwner : SavedStateRegistryOwner {
+        private val controller = SavedStateRegistryController.create(this)
+        private val lifecycleRegistry = LifecycleRegistry(this)
+
+        init {
+            controller.performAttach()
+            controller.performRestore(null)
+            lifecycleRegistry.currentState = Lifecycle.State.CREATED
+        }
+
+        override val lifecycle: Lifecycle
+            get() = lifecycleRegistry
+
+        override val savedStateRegistry: SavedStateRegistry
+            get() = controller.savedStateRegistry
+
+        fun markDestroyed() {
+            lifecycleRegistry.currentState = Lifecycle.State.DESTROYED
+        }
     }
 }
 
-private data class TargetPoint(
-    val id: Int,
-    val offset: IntOffset,
-)
-
 @Composable
 private fun OverlayContent(
-    targets: List<TargetPoint>,
+    points: List<AutoClickPoint>,
     panelOffset: IntOffset,
-    isPlaying: Boolean,
+    runState: AutoClickRunState,
+    runMessage: String?,
     onPanelMoved: (IntOffset) -> Unit,
     onTargetMoved: (id: Int, drag: IntOffset) -> Unit,
     onAddTarget: () -> Unit,
     onRemoveTarget: (id: Int) -> Unit,
-    onRecord: () -> Unit,
-    onTogglePlay: () -> Unit,
+    onToggleRun: () -> Unit,
+    onSave: () -> Unit,
     onClose: () -> Unit,
 ) {
     Box(modifier = Modifier.fillMaxSize()) {
-        targets.forEachIndexed { index, target ->
+        points.forEachIndexed { index, point ->
             TargetBubble(
                 label = (index + 1).toString(),
-                offset = target.offset,
-                onDrag = { onTargetMoved(target.id, it) },
-                onRemove = { onRemoveTarget(target.id) }
+                offset = IntOffset(point.x, point.y),
+                onDrag = { onTargetMoved(point.id, it) },
+                onRemove = { onRemoveTarget(point.id) }
             )
         }
         FloatingPanel(
             panelOffset = panelOffset,
-            isPlaying = isPlaying,
+            runState = runState,
+            runMessage = runMessage,
             onDrag = onPanelMoved,
-            onRecord = onRecord,
-            onTogglePlay = onTogglePlay,
-            onSettings = onAddTarget,
+            onAddPoint = onAddTarget,
+            onToggleRun = onToggleRun,
+            onSave = onSave,
             onClose = onClose
         )
     }
@@ -217,11 +260,12 @@ private fun OverlayContent(
 @Composable
 private fun FloatingPanel(
     panelOffset: IntOffset,
-    isPlaying: Boolean,
+    runState: AutoClickRunState,
+    runMessage: String?,
     onDrag: (IntOffset) -> Unit,
-    onRecord: () -> Unit,
-    onTogglePlay: () -> Unit,
-    onSettings: () -> Unit,
+    onAddPoint: () -> Unit,
+    onToggleRun: () -> Unit,
+    onSave: () -> Unit,
     onClose: () -> Unit,
 ) {
     Card(
@@ -234,21 +278,61 @@ private fun FloatingPanel(
                 }
             },
         shape = RoundedCornerShape(16.dp),
-        colors = CardDefaults.cardColors(containerColor = Color(0xE6262A36))
+        colors = CardDefaults.cardColors(containerColor = Color(0xEFFFFAF2))
     ) {
         Column(
             modifier = Modifier.padding(12.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp)
         ) {
-            Text(text = "LittleClicker 控制面板", color = Color.White)
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                Button(onClick = onRecord) { Text("录制") }
-                Button(onClick = onTogglePlay) { Text(if (isPlaying) "暂停" else "播放") }
-            }
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                Button(onClick = onSettings) { Text("设置") }
-                Button(onClick = onClose) { Text("关闭") }
-            }
+            Text(text = "自动点击悬浮窗", color = Color(0xFF263238))
+            Text(
+                text = runMessage ?: runState.name,
+                color = Color(0xFF455A64),
+                style = MaterialTheme.typography.bodySmall
+            )
+            PanelActionButton(
+                icon = Icons.Filled.AddCircleOutline,
+                contentDescription = "添加点击点",
+                onClick = onAddPoint
+            )
+            PanelActionButton(
+                icon = if (runState == AutoClickRunState.Running) Icons.Filled.Pause else Icons.Filled.PlayArrow,
+                contentDescription = if (runState == AutoClickRunState.Running) "暂停" else "开始/继续",
+                onClick = onToggleRun
+            )
+            PanelActionButton(
+                icon = Icons.Filled.Save,
+                contentDescription = "保存",
+                onClick = onSave
+            )
+            PanelActionButton(
+                icon = Icons.Filled.Close,
+                contentDescription = "关闭",
+                onClick = onClose
+            )
+        }
+    }
+}
+
+@Composable
+private fun PanelActionButton(
+    icon: ImageVector,
+    contentDescription: String,
+    onClick: () -> Unit,
+) {
+    Box(
+        modifier = Modifier
+            .size(42.dp)
+            .background(Color(0xFFF5F5F5), CircleShape)
+            .border(1.dp, Color(0xFFE0E0E0), CircleShape),
+        contentAlignment = Alignment.Center
+    ) {
+        IconButton(onClick = onClick) {
+            Icon(
+                imageVector = icon,
+                contentDescription = contentDescription,
+                tint = Color(0xFF37474F)
+            )
         }
     }
 }

@@ -1,79 +1,105 @@
 # LittleClicker 模块说明
 
-最后更新：2026-03-22
+最后更新：2026-03-23
 
 ## 1. 构建模块（Gradle）
 - 作用：管理 Android App 编译、依赖与 Compose 构建能力。
 - 实现方法：
   - 文件：`app/build.gradle.kts`
   - 开启 `buildFeatures.compose = true`。
-  - 接入 Compose BOM 与 `activity-compose`、`material3`、`ui-tooling`。
-  - 接入页面导航：`androidx.navigation:navigation-compose`。
-  - 接入第三方 UI：`top.yukonga.miuix.kmp:miuix-android:0.8.7`。
+  - 接入 Compose BOM、`activity-compose`、`material3`、`navigation-compose`。
+  - 接入第三方 UI：`top.yukonga.miuix.kmp:miuix-android`。
   - 接入 JSON：`com.google.code.gson:gson`。
 
 ## 2. 应用清单模块（Manifest）
-- 作用：声明应用组件、系统权限、入口 Activity 与无障碍服务。
+- 作用：声明应用组件、系统权限、入口 Activity 与服务。
 - 实现方法：
   - 文件：`app/src/main/AndroidManifest.xml`
   - 权限声明：
     - `SYSTEM_ALERT_WINDOW`（悬浮窗）
     - `REQUEST_IGNORE_BATTERY_OPTIMIZATIONS`（忽略电池优化请求）
-  - 入口页面：`MainActivity`（`MAIN/LAUNCHER`）。
-  - 无障碍服务：`AutoClickAccessibilityService`，绑定 `BIND_ACCESSIBILITY_SERVICE`，并引用服务配置 XML。
+  - 组件声明：
+    - `MainActivity`
+    - `AutoClickAccessibilityService`
+    - `FloatingWindowService`
 
-## 3. 导航与页面模块（MainActivity + Compose）
-- 作用：提供应用主界面架构与三页底部导航。
+## 3. 导航壳模块（MainActivity）
+- 作用：提供三 Tab 导航壳与应用启动入口。
 - 实现方法：
   - 文件：`app/src/main/java/com/example/littleclicker/MainActivity.kt`
-  - 使用 `Scaffold` 搭建根布局，底部使用 `NavigationBar`。
-  - 使用 `NavHost` + `composable(route)` 管理页面切换。
-  - 预置三个 Tab：`首页`、`脚本管理`、`关于`。
+  - 三个 Tab：`自动点击`、`脚本管理`、`关于`。
+  - 默认首页：`自动点击`。
+  - 在入口处初始化 `AutoClickCoordinator`，供页面和服务共享状态。
 
-## 4. 首页权限引导模块（HomeScreen）
-- 作用：给小白用户提供“保姆级”授权流程，确保自动点击运行条件齐全。
+## 4. 自动点击页面模块（AutoClickScreen）
+- 作用：提供自动点击配置、定时、运行控制与权限引导。
 - 实现方法：
-  - 文件：`app/src/main/java/com/example/littleclicker/MainActivity.kt`
-  - 通过卡片展示 3 项能力状态：悬浮窗、无障碍、电池优化。
-  - 卡片点击后分别跳转系统设置页面：
-    - 悬浮窗：`ACTION_MANAGE_OVERLAY_PERMISSION`
-    - 无障碍：`ACTION_ACCESSIBILITY_SETTINGS`
-    - 电池优化：`ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS`
-  - 通过 `onResume` 刷新授权状态；全部授权后启用“开启悬浮窗”按钮。
+  - 文件：`app/src/main/java/com/example/littleclicker/ui/AutoClickScreen.kt`
+  - 保留 3 项权限卡片：悬浮窗、无障碍、电池优化。
+  - 配置项：
+    - `profile.name`
+    - `cycleCount`
+    - 每个点击点的 `delayMs`、`touchDurationMs`、`repeatCount`
+  - 定时项：选择本地时间点 `startAtMillis`，支持清除定时与过期提示。
+  - 运行项：开启悬浮窗、立即开始、暂停/继续、停止、保存配置。
 
-## 5. 脚本管理模块（ScriptManageScreen）
-- 作用：作为脚本列表、导入、启停能力的承载入口。
+## 5. 自动点击数据模块（Models + Repository）
+- 作用：定义自动点击/脚本草稿数据结构并提供本地 JSON 持久化。
 - 实现方法：
-  - 文件：`app/src/main/java/com/example/littleclicker/MainActivity.kt`
-  - 当前为占位实现，已在导航体系中完成接入，后续可扩展本地脚本存储和执行状态管理。
+  - 文件：
+    - `app/src/main/java/com/example/littleclicker/autoclick/AutoClickModels.kt`
+    - `app/src/main/java/com/example/littleclicker/autoclick/AutoClickRepository.kt`
+  - 核心模型：
+    - `AutoClickPoint`
+    - `AutoClickProfile`
+    - `ScriptDraft`
+    - `AutoClickRunState`
+  - 存储位置：`filesDir` 私有目录（`autoclick/profile.json`、`scripts/*.json`）。
 
-## 6. 关于模块（AboutScreen）
-- 作用：展示应用品牌信息与辅助入口（更新、隐私、免责声明）。
+## 6. 自动点击协调模块（AutoClickCoordinator）
+- 作用：统一页面、悬浮窗、无障碍服务的状态与操作入口。
 - 实现方法：
-  - 文件：`app/src/main/java/com/example/littleclicker/MainActivity.kt`
-  - 居中展示图标、名称、版本号。
-  - 通过列表卡片展示 `检查更新`、`隐私政策`、`免责声明` 入口。
+  - 文件：`app/src/main/java/com/example/littleclicker/autoclick/AutoClickCoordinator.kt`
+  - 能力：
+    - 管理 `profile/runtime/scriptDrafts` 的 `StateFlow`
+    - 点击点增删拖拽与参数更新
+    - 应用内可靠定时（进程存活时到点触发）
+    - 启动/暂停/继续/停止执行
+    - 自动点击配置保存、脚本草稿新建/覆盖保存/列表刷新
 
-## 7. 无障碍服务模块（Accessibility Service）
-- 作用：承载未来自动点击手势与可访问性事件处理。
+## 7. 无障碍执行模块（AutoClickAccessibilityService）
+- 作用：执行自动点击手势队列，并支持并发保护与暂停/继续/停止。
 - 实现方法：
-  - 服务类：`app/src/main/java/com/example/littleclicker/service/AutoClickAccessibilityService.kt`
-- 服务配置：`app/src/main/res/xml/accessibility_service_config.xml`
-- 目前为骨架实现，已满足注册与启用前置条件，后续可在 `onAccessibilityEvent` 中接入脚本执行逻辑。
+  - 文件：`app/src/main/java/com/example/littleclicker/service/AutoClickAccessibilityService.kt`
+  - 执行方式：`dispatchGesture` + 单点点击手势。
+  - 队列规则：按点位顺序、每点重复、全局循环展开执行。
+  - 生命周期：服务连接后注册实例；销毁时释放任务与协程。
 
-## 8. 悬浮窗服务模块（Floating Window Service）
-- 作用：提供可视化悬浮控制面板与多靶标拖拽定位能力。
+## 8. 自动点击悬浮窗模块（FloatingWindowService）
+- 作用：提供自动点击专用可拖拽悬浮面板与点位拖拽能力。
 - 实现方法：
   - 文件：`app/src/main/java/com/example/littleclicker/service/FloatingWindowService.kt`
-  - 服务基类：`LifecycleService`。
-  - 渲染方式：`WindowManager + ComposeView`，覆盖层类型 `TYPE_APPLICATION_OVERLAY`。
-  - 面板能力：4 个入口按钮（录制、播放/暂停、设置、关闭）。
-  - 靶标能力：支持多靶标添加、拖拽、删除；序号按添加顺序显示，删除后按列表顺序重排，避免重复序号。
-  - 对外入口：`FloatingWindowService.start(context)` / `FloatingWindowService.stop(context)`。
-  - 清单声明：`app/src/main/AndroidManifest.xml` 中注册 `FloatingWindowService`。
+  - 渲染：`WindowManager + ComposeView`。
+  - 面板按钮：添加点位、开始/暂停、保存、关闭。
+  - 点位：支持多点拖拽、删除，顺序按添加顺序稳定显示。
+  - 对外入口：`startAutoClickOverlay(context)` / `stopAutoClickOverlay(context)`。
 
-## 9. 资源与主题模块（res）
-- 作用：统一应用图标、字符串、颜色和主题配置。
+## 9. 脚本草稿管理模块（ScriptManageScreen）
+- 作用：先落地脚本保存能力，不包含动作编辑/执行。
 - 实现方法：
-  - 目录：`app/src/main/res/`
-  - 当前包含 launcher 图标资源、基础主题与字符串配置，可继续扩展 miuix 风格颜色体系。
+  - 文件：`app/src/main/java/com/example/littleclicker/ui/ScriptManageScreen.kt`
+  - 支持：
+    - 新建草稿并保存
+    - 覆盖保存已选草稿
+    - 列表展示与点击加载
+
+## 10. 关于模块（AboutScreen）
+- 作用：展示应用品牌信息和占位入口。
+- 实现方法：
+  - 文件：`app/src/main/java/com/example/littleclicker/ui/AboutScreen.kt`
+  - 展示图标、名称、版本以及基础列表项。
+
+## 11. UI 通用工具模块（UiHelpers）
+- 作用：集中权限跳转、状态检测、日期时间选择与格式化。
+- 实现方法：
+  - 文件：`app/src/main/java/com/example/littleclicker/ui/UiHelpers.kt`
