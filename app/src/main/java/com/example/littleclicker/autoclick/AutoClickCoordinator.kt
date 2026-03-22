@@ -12,6 +12,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+
 object AutoClickCoordinator {
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
@@ -23,6 +24,9 @@ object AutoClickCoordinator {
     private val _profile = MutableStateFlow(AutoClickProfile())
     val profile: StateFlow<AutoClickProfile> = _profile.asStateFlow()
 
+    private val _profiles = MutableStateFlow<List<AutoClickProfile>>(emptyList())
+    val profiles: StateFlow<List<AutoClickProfile>> = _profiles.asStateFlow()
+
     private val _runtime = MutableStateFlow(AutoClickRuntime())
     val runtime: StateFlow<AutoClickRuntime> = _runtime.asStateFlow()
 
@@ -32,23 +36,58 @@ object AutoClickCoordinator {
     fun initialize(context: Context) {
         val applicationContext = context.applicationContext
         appContext = applicationContext
-        if (initialized) return
+        if (initialized) {
+            refreshProfiles()
+            return
+        }
 
-        _profile.value = AutoClickRepository.loadProfile(applicationContext)
+        _profile.value = AutoClickRepository.loadActiveProfile(applicationContext)
+        refreshProfiles()
         refreshScriptDrafts()
         initialized = true
+        restoreScheduleForCurrentProfile()
+    }
 
-        val pendingStartAt = _profile.value.startAtMillis
-        if (pendingStartAt != null) {
-            if (pendingStartAt > System.currentTimeMillis()) {
-                scheduleAt(pendingStartAt)
-            } else {
-                _runtime.value = AutoClickRuntime(
-                    state = AutoClickRunState.Failed,
-                    message = "上次定时已过期，请重新设置或立即开始",
-                    scheduledAtMillis = pendingStartAt
-                )
-            }
+    fun refreshProfiles() {
+        val context = appContext ?: return
+        _profiles.value = AutoClickRepository.listProfiles(context)
+    }
+
+    fun loadProfile(profileId: String): Result<AutoClickProfile> {
+        val context = appContext ?: return Result.failure(IllegalStateException("Coordinator not initialized"))
+
+        return runCatching {
+            stop()
+            val loaded = AutoClickRepository.loadProfile(context, profileId)
+                ?: throw IllegalArgumentException("找不到指定配置")
+            AutoClickRepository.setActiveProfileId(context, loaded.id)
+            _profile.value = loaded
+            refreshProfiles()
+            restoreScheduleForCurrentProfile()
+            loaded
+        }
+    }
+
+    fun saveAsNewProfile(name: String): Result<AutoClickProfile> {
+        val context = appContext ?: return Result.failure(IllegalStateException("Coordinator not initialized"))
+        val base = _profile.value
+        val now = System.currentTimeMillis()
+        val newProfile = base.copy(
+            id = "profile_${now}_${(1000..9999).random()}",
+            name = name.ifBlank { "配置_$now" },
+            startAtMillis = null,
+            updatedAt = now
+        )
+
+        return runCatching {
+            AutoClickRepository.saveProfile(context, newProfile, makeActive = true)
+            _profile.value = newProfile
+            refreshProfiles()
+            _runtime.value = AutoClickRuntime(
+                state = AutoClickRunState.Idle,
+                message = "已切换到新配置：${newProfile.name}"
+            )
+            newProfile
         }
     }
 
@@ -242,8 +281,10 @@ object AutoClickCoordinator {
 
     fun saveProfile(): Result<Unit> {
         val context = appContext ?: return Result.failure(IllegalStateException("Coordinator not initialized"))
+        val snapshot = _profile.value
         return runCatching {
-            AutoClickRepository.saveProfile(context, _profile.value)
+            AutoClickRepository.saveProfile(context, snapshot, makeActive = true)
+            refreshProfiles()
         }
     }
 
@@ -285,6 +326,24 @@ object AutoClickCoordinator {
             scheduledAtMillis = if (state == AutoClickRunState.Scheduled) _profile.value.startAtMillis else null
         )
         _runtime.value = runtime
+    }
+
+    private fun restoreScheduleForCurrentProfile() {
+        val pendingStartAt = _profile.value.startAtMillis
+        if (pendingStartAt == null) {
+            _runtime.value = AutoClickRuntime(state = AutoClickRunState.Idle, message = "配置已加载")
+            return
+        }
+
+        if (pendingStartAt > System.currentTimeMillis()) {
+            scheduleAt(pendingStartAt)
+        } else {
+            _runtime.value = AutoClickRuntime(
+                state = AutoClickRunState.Failed,
+                message = "当前配置中的定时已过期，请重新设置",
+                scheduledAtMillis = pendingStartAt
+            )
+        }
     }
 
     private fun cancelSchedule() {

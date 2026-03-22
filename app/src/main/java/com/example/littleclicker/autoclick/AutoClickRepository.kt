@@ -10,23 +10,84 @@ object AutoClickRepository {
     private val gson: Gson = GsonBuilder().setPrettyPrinting().create()
 
     private const val AUTO_CLICK_DIR = "autoclick"
-    private const val PROFILE_FILE = "profile.json"
+    private const val PROFILE_DIR = "profiles"
+    private const val STATE_FILE = "state.json"
+    private const val LEGACY_PROFILE_FILE = "profile.json"
     private const val SCRIPT_DIR = "scripts"
+    private const val DEFAULT_PROFILE_ID = "default"
 
-    fun loadProfile(context: Context): AutoClickProfile {
-        val file = profileFile(context)
-        if (!file.exists()) return AutoClickProfile()
+    private data class AutoClickStorageState(
+        val activeProfileId: String? = null,
+    )
+
+    fun loadActiveProfile(context: Context): AutoClickProfile {
+        migrateLegacyProfileIfNeeded(context)
+
+        val profiles = listProfiles(context)
+        if (profiles.isEmpty()) {
+            val created = AutoClickProfile(
+                id = DEFAULT_PROFILE_ID,
+                name = "默认自动点击配置",
+                points = emptyList(),
+                cycleCount = 1,
+                startAtMillis = null,
+                updatedAt = System.currentTimeMillis()
+            )
+            saveProfile(context, created, makeActive = true)
+            return created
+        }
+
+        val activeId = loadStorageState(context).activeProfileId
+        val active = profiles.firstOrNull { it.id == activeId } ?: profiles.first()
+        saveStorageState(context, AutoClickStorageState(activeProfileId = active.id))
+        return active
+    }
+
+    fun listProfiles(context: Context): List<AutoClickProfile> {
+        val dir = profilesDir(context)
+        if (!dir.exists()) return emptyList()
+
+        return dir.listFiles()
+            ?.filter { it.isFile && it.extension.equals("json", ignoreCase = true) }
+            ?.mapNotNull { file -> runCatching { profileFromJson(file.readText()) }.getOrNull() }
+            ?.sortedByDescending { it.updatedAt }
+            ?: emptyList()
+    }
+
+    fun loadProfile(context: Context, profileId: String): AutoClickProfile? {
+        val file = profileFile(context, profileId)
+        if (!file.exists()) return null
         return runCatching {
             profileFromJson(file.readText())
-        }.getOrElse {
-            AutoClickProfile()
+        }.getOrNull()
+    }
+
+    fun saveProfile(
+        context: Context,
+        profile: AutoClickProfile,
+        makeActive: Boolean = true,
+    ) {
+        val normalized = profile.copy(
+            id = profile.id.ifBlank { DEFAULT_PROFILE_ID },
+            name = profile.name.ifBlank { "未命名配置" },
+            updatedAt = System.currentTimeMillis()
+        )
+
+        val file = profileFile(context, normalized.id)
+        file.parentFile?.mkdirs()
+        file.writeText(profileToJson(normalized))
+
+        if (makeActive) {
+            saveStorageState(context, AutoClickStorageState(activeProfileId = normalized.id))
         }
     }
 
-    fun saveProfile(context: Context, profile: AutoClickProfile) {
-        val file = profileFile(context)
-        file.parentFile?.mkdirs()
-        file.writeText(profileToJson(profile))
+    fun getActiveProfileId(context: Context): String? {
+        return loadStorageState(context).activeProfileId
+    }
+
+    fun setActiveProfileId(context: Context, profileId: String) {
+        saveStorageState(context, AutoClickStorageState(activeProfileId = profileId))
     }
 
     fun listDrafts(context: Context): List<ScriptDraft> {
@@ -76,11 +137,62 @@ object AutoClickRepository {
 
     fun draftFromJson(json: String): ScriptDraft = gson.fromJson(json, ScriptDraft::class.java)
 
+    private fun migrateLegacyProfileIfNeeded(context: Context) {
+        val legacyFile = File(autoclickDir(context), LEGACY_PROFILE_FILE)
+        if (!legacyFile.exists()) return
+
+        val currentProfiles = listProfiles(context)
+        if (currentProfiles.isNotEmpty()) {
+            return
+        }
+
+        val parsedLegacy = runCatching {
+            profileFromJson(legacyFile.readText())
+        }.getOrElse {
+            AutoClickProfile()
+        }
+        val migrated = parsedLegacy.copy(
+            id = if (parsedLegacy.id.isBlank()) DEFAULT_PROFILE_ID else parsedLegacy.id,
+            updatedAt = System.currentTimeMillis()
+        )
+
+        saveProfile(context, migrated, makeActive = true)
+        runCatching { legacyFile.delete() }
+    }
+
     private fun autoclickDir(context: Context): File = File(context.filesDir, AUTO_CLICK_DIR)
 
-    private fun profileFile(context: Context): File = File(autoclickDir(context), PROFILE_FILE)
+    private fun profilesDir(context: Context): File = File(autoclickDir(context), PROFILE_DIR)
+
+    private fun profileFile(context: Context, profileId: String): File {
+        val safeId = sanitizeFileName(profileId)
+        return File(profilesDir(context), "$safeId.json")
+    }
+
+    private fun stateFile(context: Context): File = File(autoclickDir(context), STATE_FILE)
 
     private fun scriptsDir(context: Context): File = File(context.filesDir, SCRIPT_DIR)
 
     private fun draftFile(context: Context, draftId: String): File = File(scriptsDir(context), "$draftId.json")
+
+    private fun loadStorageState(context: Context): AutoClickStorageState {
+        val file = stateFile(context)
+        if (!file.exists()) return AutoClickStorageState()
+        return runCatching {
+            gson.fromJson(file.readText(), AutoClickStorageState::class.java)
+        }.getOrElse {
+            AutoClickStorageState()
+        }
+    }
+
+    private fun saveStorageState(context: Context, state: AutoClickStorageState) {
+        val file = stateFile(context)
+        file.parentFile?.mkdirs()
+        file.writeText(gson.toJson(state))
+    }
+
+    private fun sanitizeFileName(raw: String): String {
+        if (raw.isBlank()) return DEFAULT_PROFILE_ID
+        return raw.replace(Regex("[^a-zA-Z0-9._-]"), "_")
+    }
 }

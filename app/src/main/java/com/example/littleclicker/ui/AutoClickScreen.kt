@@ -1,10 +1,10 @@
 package com.example.littleclicker.ui
 
+import android.content.Intent
 import android.provider.Settings
 import android.widget.Toast
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
@@ -16,8 +16,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
-import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.Text as M3Text
+import androidx.compose.material3.Switch
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.collectAsState
@@ -35,6 +34,7 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
+import com.example.littleclicker.ConfigManageActivity
 import com.example.littleclicker.autoclick.AutoClickCoordinator
 import com.example.littleclicker.autoclick.AutoClickRunState
 import com.example.littleclicker.service.FloatingWindowService
@@ -93,7 +93,8 @@ internal fun AutoClickScreen(innerPadding: PaddingValues) {
             )
         )
     }
-    val allGranted = statuses.all { it.granted }
+    val pendingStatuses = statuses.filterNot { it.granted }
+    val allGranted = pendingStatuses.isEmpty()
     val expiredSchedule = profile.startAtMillis?.let { it <= System.currentTimeMillis() } == true
 
     LazyColumn(
@@ -122,10 +123,17 @@ internal fun AutoClickScreen(innerPadding: PaddingValues) {
         }
 
         item {
-            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                statuses.forEach { status ->
-                    PermissionCard(status = status)
+            if (pendingStatuses.isNotEmpty()) {
+                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    pendingStatuses.forEach { status ->
+                        PermissionCard(status = status)
+                    }
                 }
+            } else {
+                Text(
+                    text = "权限已就绪，授权提示已自动隐藏。",
+                    color = Color(0xFF1F8B4C)
+                )
             }
         }
 
@@ -144,28 +152,18 @@ internal fun AutoClickScreen(innerPadding: PaddingValues) {
                         .padding(14.dp),
                     verticalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
-                    Text("配置名称")
-                    OutlinedTextField(
-                        value = profile.name,
-                        onValueChange = { AutoClickCoordinator.updateProfileName(it) },
-                        modifier = Modifier.fillMaxWidth(),
-                        singleLine = true,
-                        label = { M3Text("自动点击配置名") }
+                    Text("当前配置")
+                    Text(
+                        text = "${profile.name}（循环 ${profile.cycleCount} 次）",
+                        color = MiuixTheme.colorScheme.onBackgroundVariant
                     )
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.SpaceBetween
+                    Button(
+                        onClick = {
+                            context.startActivity(Intent(context, ConfigManageActivity::class.java))
+                        },
+                        modifier = Modifier.fillMaxWidth()
                     ) {
-                        Text("全局循环次数：${profile.cycleCount}")
-                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                            SmallActionButton(text = "-") {
-                                AutoClickCoordinator.updateCycleCount(profile.cycleCount - 1)
-                            }
-                            SmallActionButton(text = "+") {
-                                AutoClickCoordinator.updateCycleCount(profile.cycleCount + 1)
-                            }
-                        }
+                        Text("配置管理")
                     }
                 }
             }
@@ -252,6 +250,33 @@ internal fun AutoClickScreen(innerPadding: PaddingValues) {
                         text = "状态：${runtime.state} ${runtime.message ?: ""}",
                         color = MiuixTheme.colorScheme.onBackgroundVariant
                     )
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Text("运行开关")
+                        val runningEnabled = runtime.state == AutoClickRunState.Running ||
+                            runtime.state == AutoClickRunState.Paused
+                        Switch(
+                            checked = runningEnabled,
+                            onCheckedChange = { shouldRun ->
+                                val success = if (shouldRun) {
+                                    when (runtime.state) {
+                                        AutoClickRunState.Paused -> AutoClickCoordinator.resume()
+                                        AutoClickRunState.Running -> true
+                                        else -> AutoClickCoordinator.startNow()
+                                    }
+                                } else {
+                                    AutoClickCoordinator.stop()
+                                }
+                                if (!success) {
+                                    Toast.makeText(context, "切换失败，请检查权限与服务状态", Toast.LENGTH_SHORT).show()
+                                }
+                            },
+                            enabled = allGranted
+                        )
+                    }
                     Button(
                         onClick = {
                             if (!Settings.canDrawOverlays(context)) {
@@ -266,60 +291,6 @@ internal fun AutoClickScreen(innerPadding: PaddingValues) {
                         modifier = Modifier.fillMaxWidth()
                     ) {
                         Text("开启自动点击悬浮窗")
-                    }
-                    Button(
-                        onClick = {
-                            val started = AutoClickCoordinator.startNow()
-                            if (!started) {
-                                Toast.makeText(context, "开始失败，请检查无障碍服务", Toast.LENGTH_SHORT).show()
-                            }
-                        },
-                        enabled = allGranted,
-                        modifier = Modifier.fillMaxWidth()
-                    ) {
-                        Text("立即开始")
-                    }
-                    Button(
-                        onClick = {
-                            val success = if (runtime.state == AutoClickRunState.Paused) {
-                                AutoClickCoordinator.resume()
-                            } else {
-                                AutoClickCoordinator.pause()
-                            }
-                            if (!success) {
-                                Toast.makeText(context, "当前状态不可切换", Toast.LENGTH_SHORT).show()
-                            }
-                        },
-                        enabled = runtime.state == AutoClickRunState.Running ||
-                            runtime.state == AutoClickRunState.Paused,
-                        modifier = Modifier.fillMaxWidth()
-                    ) {
-                        Text(if (runtime.state == AutoClickRunState.Paused) "继续" else "暂停")
-                    }
-                    Button(
-                        onClick = {
-                            val stopped = AutoClickCoordinator.stop()
-                            if (!stopped) {
-                                Toast.makeText(context, "当前没有运行中的任务", Toast.LENGTH_SHORT).show()
-                            }
-                        },
-                        modifier = Modifier.fillMaxWidth()
-                    ) {
-                        Text("停止")
-                    }
-                    Button(
-                        onClick = {
-                            val result = AutoClickCoordinator.saveProfile()
-                            val tip = if (result.isSuccess) {
-                                "自动点击配置已保存"
-                            } else {
-                                "保存失败：${result.exceptionOrNull()?.message}"
-                            }
-                            Toast.makeText(context, tip, Toast.LENGTH_SHORT).show()
-                        },
-                        modifier = Modifier.fillMaxWidth()
-                    ) {
-                        Text("保存配置")
                     }
                 }
             }
@@ -382,21 +353,6 @@ internal fun AutoClickScreen(innerPadding: PaddingValues) {
         item {
             Spacer(modifier = Modifier.height(24.dp))
         }
-    }
-}
-
-@Composable
-private fun SmallActionButton(
-    text: String,
-    onClick: () -> Unit,
-) {
-    Button(
-        onClick = onClick,
-        modifier = Modifier
-            .height(34.dp)
-            .width(42.dp)
-    ) {
-        Text(text)
     }
 }
 
