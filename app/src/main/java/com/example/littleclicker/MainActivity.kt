@@ -59,6 +59,7 @@ import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import com.example.littleclicker.service.AutoClickAccessibilityService
+import com.example.littleclicker.service.FloatingWindowService
 import top.yukonga.miuix.kmp.basic.Button
 import top.yukonga.miuix.kmp.basic.ButtonDefaults
 import top.yukonga.miuix.kmp.basic.Card
@@ -196,7 +197,7 @@ private fun HomeScreen() {
         verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
         Text(
-            text = "权限保姆级引导",
+            text = "设置向导",
             style = MiuixTheme.textStyles.title1,
             fontWeight = FontWeight.Bold
         )
@@ -210,7 +211,13 @@ private fun HomeScreen() {
         Spacer(modifier = Modifier.weight(1f))
         Button(
             onClick = {
-                Toast.makeText(context, "悬浮窗已准备就绪，可接入你的控制面板服务", Toast.LENGTH_SHORT).show()
+                if (!Settings.canDrawOverlays(context)) {
+                    openOverlaySettings(context)
+                    Toast.makeText(context, "请先授予悬浮窗权限", Toast.LENGTH_SHORT).show()
+                    return@Button
+                }
+                FloatingWindowService.start(context)
+                Toast.makeText(context, "悬浮窗服务已启动", Toast.LENGTH_SHORT).show()
             },
             enabled = allGranted,
             modifier = Modifier.fillMaxWidth()

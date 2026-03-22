@@ -58,10 +58,21 @@
 - 作用：承载未来自动点击手势与可访问性事件处理。
 - 实现方法：
   - 服务类：`app/src/main/java/com/example/littleclicker/service/AutoClickAccessibilityService.kt`
-  - 服务配置：`app/src/main/res/xml/accessibility_service_config.xml`
-  - 目前为骨架实现，已满足注册与启用前置条件，后续可在 `onAccessibilityEvent` 中接入脚本执行逻辑。
+- 服务配置：`app/src/main/res/xml/accessibility_service_config.xml`
+- 目前为骨架实现，已满足注册与启用前置条件，后续可在 `onAccessibilityEvent` 中接入脚本执行逻辑。
 
-## 8. 资源与主题模块（res）
+## 8. 悬浮窗服务模块（Floating Window Service）
+- 作用：提供可视化悬浮控制面板与多靶标拖拽定位能力。
+- 实现方法：
+  - 文件：`app/src/main/java/com/example/littleclicker/service/FloatingWindowService.kt`
+  - 服务基类：`LifecycleService`。
+  - 渲染方式：`WindowManager + ComposeView`，覆盖层类型 `TYPE_APPLICATION_OVERLAY`。
+  - 面板能力：4 个入口按钮（录制、播放/暂停、设置、关闭）。
+  - 靶标能力：支持多靶标添加、拖拽、删除；序号按添加顺序显示，删除后按列表顺序重排，避免重复序号。
+  - 对外入口：`FloatingWindowService.start(context)` / `FloatingWindowService.stop(context)`。
+  - 清单声明：`app/src/main/AndroidManifest.xml` 中注册 `FloatingWindowService`。
+
+## 9. 资源与主题模块（res）
 - 作用：统一应用图标、字符串、颜色和主题配置。
 - 实现方法：
   - 目录：`app/src/main/res/`

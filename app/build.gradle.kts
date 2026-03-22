@@ -51,6 +51,9 @@ dependencies {
     implementation("androidx.compose.material:material-icons-extended")
     implementation("androidx.compose.material3:material3")
     implementation("androidx.navigation:navigation-compose:2.8.9")
+    implementation("androidx.lifecycle:lifecycle-runtime-ktx:2.8.7")
+    implementation("androidx.lifecycle:lifecycle-service:2.8.7")
+    implementation("androidx.lifecycle:lifecycle-viewmodel:2.8.7")
     implementation("com.google.code.gson:gson:2.13.1")
     implementation("top.yukonga.miuix.kmp:miuix-android:0.8.7")
 
