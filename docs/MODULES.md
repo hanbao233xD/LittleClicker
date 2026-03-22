@@ -42,6 +42,7 @@
     - 每个点击点的 `delayMs`、`touchDurationMs`、`repeatCount`
   - 定时项：选择本地时间点 `startAtMillis`，支持清除定时与过期提示。
   - 运行项：开启悬浮窗、立即开始、暂停/继续、停止、保存配置。
+  - 点击点列表：改为只读展示，参数编辑入口迁移至悬浮窗长按弹窗。
 
 ## 5. 自动点击数据模块（Models + Repository）
 - 作用：定义自动点击/脚本草稿数据结构并提供本地 JSON 持久化。
@@ -81,6 +82,8 @@
   - 文件：`app/src/main/java/com/example/littleclicker/service/FloatingWindowService.kt`
   - 渲染：`WindowManager + ComposeView`。
   - 面板按钮：添加点位、开始/暂停、保存、关闭。
+  - 拖动能力：面板拖动与点位拖动均支持边界约束，避免移动到屏幕外。
+  - 点位编辑：长按点位弹出编辑窗口，支持调整坐标、延迟、触摸时长、重复次数。
   - 点位：支持多点拖拽、删除，顺序按添加顺序稳定显示。
   - 对外入口：`startAutoClickOverlay(context)` / `stopAutoClickOverlay(context)`。
 

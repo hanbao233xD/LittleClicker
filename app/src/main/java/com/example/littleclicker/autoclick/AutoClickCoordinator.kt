@@ -12,8 +12,6 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
-import kotlin.math.max
-
 object AutoClickCoordinator {
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
@@ -77,8 +75,25 @@ object AutoClickCoordinator {
                         point
                     } else {
                         point.copy(
-                            x = max(0, point.x + dx),
-                            y = max(0, point.y + dy)
+                            x = (point.x + dx).coerceAtLeast(0),
+                            y = (point.y + dy).coerceAtLeast(0)
+                        )
+                    }
+                }
+            )
+        }
+    }
+
+    fun setPointPosition(pointId: Int, x: Int, y: Int) {
+        updateProfile { current ->
+            current.copy(
+                points = current.points.map { point ->
+                    if (point.id != pointId) {
+                        point
+                    } else {
+                        point.copy(
+                            x = x.coerceAtLeast(0),
+                            y = y.coerceAtLeast(0)
                         )
                     }
                 }
@@ -88,6 +103,8 @@ object AutoClickCoordinator {
 
     fun updatePointConfig(
         pointId: Int,
+        x: Int? = null,
+        y: Int? = null,
         delayMs: Long? = null,
         touchDurationMs: Long? = null,
         repeatCount: Int? = null,
@@ -99,6 +116,8 @@ object AutoClickCoordinator {
                         point
                     } else {
                         point.copy(
+                            x = x?.coerceAtLeast(0) ?: point.x,
+                            y = y?.coerceAtLeast(0) ?: point.y,
                             delayMs = delayMs?.coerceAtLeast(0L) ?: point.delayMs,
                             touchDurationMs = touchDurationMs?.coerceAtLeast(1L) ?: point.touchDurationMs,
                             repeatCount = repeatCount?.coerceAtLeast(1) ?: point.repeatCount

@@ -1,22 +1,27 @@
 package com.example.littleclicker.service
 
+import android.app.AlertDialog
 import android.app.Service
 import android.content.Context
 import android.content.Intent
 import android.graphics.PixelFormat
 import android.os.Build
 import android.provider.Settings
+import android.text.InputType
+import android.view.Gravity
 import android.view.WindowManager
+import android.widget.EditText
+import android.widget.LinearLayout
 import android.widget.Toast
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectDragGestures
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.offset
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
@@ -36,20 +41,21 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.ComposeView
 import androidx.compose.ui.platform.ViewCompositionStrategy
 import androidx.compose.ui.unit.IntOffset
+import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleRegistry
 import androidx.lifecycle.LifecycleService
+import androidx.lifecycle.lifecycleScope
 import androidx.lifecycle.setViewTreeLifecycleOwner
 import androidx.savedstate.SavedStateRegistry
 import androidx.savedstate.SavedStateRegistryController
@@ -58,14 +64,30 @@ import androidx.savedstate.setViewTreeSavedStateRegistryOwner
 import com.example.littleclicker.autoclick.AutoClickCoordinator
 import com.example.littleclicker.autoclick.AutoClickPoint
 import com.example.littleclicker.autoclick.AutoClickRunState
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.launch
 import kotlin.math.roundToInt
 
 class FloatingWindowService : LifecycleService() {
 
     private lateinit var windowManager: WindowManager
-    private var composeView: ComposeView? = null
 
-    private var panelOffset by mutableStateOf(IntOffset(72, 180))
+    private var panelView: ComposeView? = null
+    private var panelLayoutParams: WindowManager.LayoutParams? = null
+    private var panelSize: IntSize = IntSize.Zero
+    private var panelOffset: IntOffset = IntOffset(72, 180)
+
+    private val pointViews = linkedMapOf<Int, PointOverlay>()
+    private var profileCollectJob: Job? = null
+    private var runtimeCollectJob: Job? = null
+    private var pointEditDialog: AlertDialog? = null
+
+    private val bubbleSizePx by lazy {
+        (64f * resources.displayMetrics.density).roundToInt()
+    }
+    private val bubbleHalfPx: Int
+        get() = bubbleSizePx / 2
+
     private lateinit var viewTreeSavedStateOwner: OverlaySavedStateOwner
 
     override fun onCreate() {
@@ -88,7 +110,9 @@ class FloatingWindowService : LifecycleService() {
     }
 
     override fun onDestroy() {
-        removeOverlay()
+        removeAllOverlays()
+        pointEditDialog?.dismiss()
+        pointEditDialog = null
         if (::viewTreeSavedStateOwner.isInitialized) {
             viewTreeSavedStateOwner.markDestroyed()
         }
@@ -96,7 +120,7 @@ class FloatingWindowService : LifecycleService() {
     }
 
     private fun showOverlayIfNeeded() {
-        if (composeView != null) return
+        if (panelView != null) return
         if (!Settings.canDrawOverlays(this)) {
             Toast.makeText(this, "请先授予悬浮窗权限", Toast.LENGTH_SHORT).show()
             stopSelf()
@@ -104,31 +128,44 @@ class FloatingWindowService : LifecycleService() {
         }
 
         windowManager = getSystemService(WINDOW_SERVICE) as WindowManager
-        composeView = ComposeView(this).apply {
-            setViewTreeLifecycleOwner(this@FloatingWindowService)
-            setViewTreeSavedStateRegistryOwner(viewTreeSavedStateOwner)
-            setViewCompositionStrategy(ViewCompositionStrategy.DisposeOnDetachedFromWindow)
+        createPanelOverlay()
+        syncPointOverlays(AutoClickCoordinator.profile.value.points)
+
+        profileCollectJob?.cancel()
+        profileCollectJob = lifecycleScope.launch {
+            AutoClickCoordinator.profile.collect { profile ->
+                syncPointOverlays(profile.points)
+            }
+        }
+
+        runtimeCollectJob?.cancel()
+        runtimeCollectJob = lifecycleScope.launch {
+            AutoClickCoordinator.runtime.collect { runtime ->
+                val touchable = runtime.state != AutoClickRunState.Running
+                setPointOverlaysTouchable(touchable)
+            }
+        }
+    }
+
+    private fun createPanelOverlay() {
+        val view = createComposeView().apply {
             setContent {
                 MaterialTheme {
-                    val profile by AutoClickCoordinator.profile.collectAsState()
                     val runtime by AutoClickCoordinator.runtime.collectAsState()
-                    OverlayContent(
-                        points = profile.points,
-                        panelOffset = panelOffset,
+                    FloatingPanel(
                         runState = runtime.state,
                         runMessage = runtime.message,
-                        onPanelMoved = { drag ->
-                            panelOffset = IntOffset(panelOffset.x + drag.x, panelOffset.y + drag.y)
+                        onSizeChanged = { size ->
+                            panelSize = size
+                            updatePanelOffset(panelOffset)
                         },
-                        onTargetMoved = { id, drag ->
-                            AutoClickCoordinator.movePointBy(id, drag.x, drag.y)
+                        onDrag = { drag ->
+                            val desired = IntOffset(panelOffset.x + drag.x, panelOffset.y + drag.y)
+                            updatePanelOffset(desired)
                         },
-                        onAddTarget = {
+                        onAddPoint = {
                             AutoClickCoordinator.addPoint()
                             Toast.makeText(this@FloatingWindowService, "已添加点击点", Toast.LENGTH_SHORT).show()
-                        },
-                        onRemoveTarget = { id ->
-                            AutoClickCoordinator.removePoint(id)
                         },
                         onToggleRun = {
                             val changed = when (runtime.state) {
@@ -146,8 +183,12 @@ class FloatingWindowService : LifecycleService() {
                         },
                         onSave = {
                             val result = AutoClickCoordinator.saveProfile()
-                            val text = if (result.isSuccess) "自动点击配置已保存" else "保存失败：${result.exceptionOrNull()?.message}"
-                            Toast.makeText(this@FloatingWindowService, text, Toast.LENGTH_SHORT).show()
+                            val tip = if (result.isSuccess) {
+                                "自动点击配置已保存"
+                            } else {
+                                "保存失败：${result.exceptionOrNull()?.message}"
+                            }
+                            Toast.makeText(this@FloatingWindowService, tip, Toast.LENGTH_SHORT).show()
                         },
                         onClose = { stopSelf() }
                     )
@@ -155,27 +196,285 @@ class FloatingWindowService : LifecycleService() {
             }
         }
 
+        val params = createLayoutParams(
+            width = WindowManager.LayoutParams.WRAP_CONTENT,
+            height = WindowManager.LayoutParams.WRAP_CONTENT
+        ).apply {
+            x = panelOffset.x
+            y = panelOffset.y
+        }
+
+        windowManager.addView(view, params)
+        panelView = view
+        panelLayoutParams = params
+    }
+
+    private fun syncPointOverlays(points: List<AutoClickPoint>) {
+        val pointIds = points.map { it.id }.toSet()
+        val removedIds = pointViews.keys.filter { it !in pointIds }
+        removedIds.forEach { id ->
+            val overlay = pointViews.remove(id) ?: return@forEach
+            runCatching { windowManager.removeView(overlay.view) }
+        }
+
+        points.forEach { point ->
+            val boundedCenter = clampPointCenter(IntOffset(point.x, point.y))
+            if (boundedCenter.x != point.x || boundedCenter.y != point.y) {
+                AutoClickCoordinator.setPointPosition(point.id, boundedCenter.x, boundedCenter.y)
+            }
+
+            val overlay = pointViews[point.id] ?: createPointOverlay(point.id, boundedCenter)
+            val params = overlay.layoutParams
+            val windowOffset = centerToWindowOffset(boundedCenter)
+            if (params.x != windowOffset.x || params.y != windowOffset.y) {
+                params.x = windowOffset.x
+                params.y = windowOffset.y
+                windowManager.updateViewLayout(overlay.view, params)
+            }
+        }
+    }
+
+    private fun createPointOverlay(pointId: Int, center: IntOffset): PointOverlay {
+        val view = createComposeView().apply {
+            setContent {
+                MaterialTheme {
+                    val profile by AutoClickCoordinator.profile.collectAsState()
+                    val index = profile.points.indexOfFirst { it.id == pointId }
+                    val point = profile.points.firstOrNull { it.id == pointId }
+                    if (point != null && index >= 0) {
+                        TargetBubble(
+                            label = (index + 1).toString(),
+                            onDrag = { drag ->
+                                if (drag.x != 0 || drag.y != 0) {
+                                    val currentPoint = AutoClickCoordinator.profile.value.points
+                                        .firstOrNull { it.id == pointId }
+                                    if (currentPoint != null) {
+                                        val desired = IntOffset(
+                                            currentPoint.x + drag.x,
+                                            currentPoint.y + drag.y
+                                        )
+                                        val bounded = clampPointCenter(desired)
+                                        AutoClickCoordinator.setPointPosition(
+                                            currentPoint.id,
+                                            bounded.x,
+                                            bounded.y
+                                        )
+                                    }
+                                }
+                            },
+                            onLongPress = {
+                                showPointEditDialog(point)
+                            },
+                            onRemove = {
+                                AutoClickCoordinator.removePoint(point.id)
+                            }
+                        )
+                    }
+                }
+            }
+        }
+
+        val params = createLayoutParams(
+            width = bubbleSizePx,
+            height = bubbleSizePx
+        ).apply {
+            val windowOffset = centerToWindowOffset(center)
+            x = windowOffset.x
+            y = windowOffset.y
+        }
+        windowManager.addView(view, params)
+
+        return PointOverlay(view = view, layoutParams = params).also {
+            pointViews[pointId] = it
+        }
+    }
+
+    private fun updatePanelOffset(desiredOffset: IntOffset) {
+        val bounded = clampPanel(desiredOffset)
+        panelOffset = bounded
+
+        val params = panelLayoutParams ?: return
+        val view = panelView ?: return
+        if (params.x != bounded.x || params.y != bounded.y) {
+            params.x = bounded.x
+            params.y = bounded.y
+            windowManager.updateViewLayout(view, params)
+        }
+    }
+
+    private fun clampPanel(offset: IntOffset): IntOffset {
+        val screen = getScreenSize()
+        val maxX = (screen.width - panelSize.width).coerceAtLeast(0)
+        val maxY = (screen.height - panelSize.height).coerceAtLeast(0)
+        return IntOffset(
+            x = offset.x.coerceIn(0, maxX),
+            y = offset.y.coerceIn(0, maxY)
+        )
+    }
+
+    private fun clampPointCenter(center: IntOffset): IntOffset {
+        val screen = getScreenSize()
+        val minX = bubbleHalfPx
+        val minY = bubbleHalfPx
+        val maxX = (screen.width - bubbleHalfPx).coerceAtLeast(minX)
+        val maxY = (screen.height - bubbleHalfPx).coerceAtLeast(minY)
+        return IntOffset(
+            x = center.x.coerceIn(minX, maxX),
+            y = center.y.coerceIn(minY, maxY)
+        )
+    }
+
+    private fun centerToWindowOffset(center: IntOffset): IntOffset {
+        return IntOffset(
+            x = center.x - bubbleHalfPx,
+            y = center.y - bubbleHalfPx
+        )
+    }
+
+    private fun getScreenSize(): IntSize {
+        val dm = resources.displayMetrics
+        return IntSize(dm.widthPixels, dm.heightPixels)
+    }
+
+    private fun showPointEditDialog(point: AutoClickPoint) {
+        pointEditDialog?.dismiss()
+
+        val xInput = createNumberInput(point.x)
+        val yInput = createNumberInput(point.y)
+        val delayInput = createNumberInput(point.delayMs.toInt())
+        val touchInput = createNumberInput(point.touchDurationMs.toInt())
+        val repeatInput = createNumberInput(point.repeatCount)
+
+        val container = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(40, 30, 40, 10)
+            addView(buildField("X 中心坐标", xInput))
+            addView(buildField("Y 中心坐标", yInput))
+            addView(buildField("点击延迟(ms)", delayInput))
+            addView(buildField("触摸时长(ms)", touchInput))
+            addView(buildField("重复次数", repeatInput))
+        }
+
+        val dialog = AlertDialog.Builder(this)
+            .setTitle("编辑点击点 #${point.id}")
+            .setView(container)
+            .setNegativeButton("取消", null)
+            .setPositiveButton("保存") { _, _ ->
+                val x = xInput.text.toString().toIntOrNull() ?: point.x
+                val y = yInput.text.toString().toIntOrNull() ?: point.y
+                val delayMs = xInputToLong(delayInput, point.delayMs, min = 0L)
+                val touchMs = xInputToLong(touchInput, point.touchDurationMs, min = 1L)
+                val repeat = repeatInput.text.toString().toIntOrNull()?.coerceAtLeast(1) ?: point.repeatCount
+                val bounded = clampPointCenter(IntOffset(x, y))
+
+                AutoClickCoordinator.updatePointConfig(
+                    pointId = point.id,
+                    x = bounded.x,
+                    y = bounded.y,
+                    delayMs = delayMs,
+                    touchDurationMs = touchMs,
+                    repeatCount = repeat
+                )
+                Toast.makeText(this, "点击点 #${point.id} 已更新", Toast.LENGTH_SHORT).show()
+            }
+            .create()
+
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            dialog.window?.setType(WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY)
+        } else {
+            @Suppress("DEPRECATION")
+            dialog.window?.setType(WindowManager.LayoutParams.TYPE_PHONE)
+        }
+
+        pointEditDialog = dialog
+        dialog.show()
+    }
+
+    private fun xInputToLong(input: EditText, fallback: Long, min: Long): Long {
+        return input.text.toString().toLongOrNull()?.coerceAtLeast(min) ?: fallback
+    }
+
+    private fun buildField(title: String, input: EditText): LinearLayout {
+        val titleView = EditText(this).apply {
+            setText(title)
+            isEnabled = false
+            setTextColor(0xFF455A64.toInt())
+            background = null
+            isFocusable = false
+            isClickable = false
+        }
+        return LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            addView(titleView)
+            addView(input)
+        }
+    }
+
+    private fun createNumberInput(defaultValue: Int): EditText {
+        return EditText(this).apply {
+            inputType = InputType.TYPE_CLASS_NUMBER
+            setText(defaultValue.toString())
+        }
+    }
+
+    private fun createLayoutParams(width: Int, height: Int): WindowManager.LayoutParams {
         val type = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY
         } else {
             @Suppress("DEPRECATION")
             WindowManager.LayoutParams.TYPE_PHONE
         }
-        val layoutParams = WindowManager.LayoutParams(
-            WindowManager.LayoutParams.MATCH_PARENT,
-            WindowManager.LayoutParams.MATCH_PARENT,
+
+        return WindowManager.LayoutParams(
+            width,
+            height,
             type,
-            WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN or
-                WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE,
+            WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE,
             PixelFormat.TRANSLUCENT
-        )
-        windowManager.addView(composeView, layoutParams)
+        ).apply {
+            gravity = Gravity.START or Gravity.TOP
+        }
     }
 
-    private fun removeOverlay() {
-        val view = composeView ?: return
-        windowManager.removeView(view)
-        composeView = null
+    private fun createComposeView(): ComposeView {
+        return ComposeView(this).apply {
+            setViewTreeLifecycleOwner(this@FloatingWindowService)
+            setViewTreeSavedStateRegistryOwner(viewTreeSavedStateOwner)
+            setViewCompositionStrategy(ViewCompositionStrategy.DisposeOnDetachedFromWindow)
+        }
+    }
+
+    private fun removeAllOverlays() {
+        profileCollectJob?.cancel()
+        profileCollectJob = null
+        runtimeCollectJob?.cancel()
+        runtimeCollectJob = null
+
+        panelView?.let { runCatching { windowManager.removeView(it) } }
+        panelView = null
+        panelLayoutParams = null
+
+        pointViews.values.forEach { overlay ->
+            runCatching { windowManager.removeView(overlay.view) }
+        }
+        pointViews.clear()
+    }
+
+    private fun setPointOverlaysTouchable(touchable: Boolean) {
+        val touchableFlag = WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE
+        pointViews.values.forEach { overlay ->
+            val params = overlay.layoutParams
+            val hasFlag = (params.flags and touchableFlag) != 0
+            val needFlag = !touchable
+            if (hasFlag == needFlag) return@forEach
+
+            params.flags = if (needFlag) {
+                params.flags or touchableFlag
+            } else {
+                params.flags and touchableFlag.inv()
+            }
+            runCatching { windowManager.updateViewLayout(overlay.view, params) }
+        }
     }
 
     companion object {
@@ -221,47 +520,16 @@ class FloatingWindowService : LifecycleService() {
     }
 }
 
-@Composable
-private fun OverlayContent(
-    points: List<AutoClickPoint>,
-    panelOffset: IntOffset,
-    runState: AutoClickRunState,
-    runMessage: String?,
-    onPanelMoved: (IntOffset) -> Unit,
-    onTargetMoved: (id: Int, drag: IntOffset) -> Unit,
-    onAddTarget: () -> Unit,
-    onRemoveTarget: (id: Int) -> Unit,
-    onToggleRun: () -> Unit,
-    onSave: () -> Unit,
-    onClose: () -> Unit,
-) {
-    Box(modifier = Modifier.fillMaxSize()) {
-        points.forEachIndexed { index, point ->
-            TargetBubble(
-                label = (index + 1).toString(),
-                offset = IntOffset(point.x, point.y),
-                onDrag = { onTargetMoved(point.id, it) },
-                onRemove = { onRemoveTarget(point.id) }
-            )
-        }
-        FloatingPanel(
-            panelOffset = panelOffset,
-            runState = runState,
-            runMessage = runMessage,
-            onDrag = onPanelMoved,
-            onAddPoint = onAddTarget,
-            onToggleRun = onToggleRun,
-            onSave = onSave,
-            onClose = onClose
-        )
-    }
-}
+private data class PointOverlay(
+    val view: ComposeView,
+    val layoutParams: WindowManager.LayoutParams,
+)
 
 @Composable
 private fun FloatingPanel(
-    panelOffset: IntOffset,
     runState: AutoClickRunState,
     runMessage: String?,
+    onSizeChanged: (IntSize) -> Unit,
     onDrag: (IntOffset) -> Unit,
     onAddPoint: () -> Unit,
     onToggleRun: () -> Unit,
@@ -270,7 +538,7 @@ private fun FloatingPanel(
 ) {
     Card(
         modifier = Modifier
-            .offset { panelOffset }
+            .onSizeChanged(onSizeChanged)
             .pointerInput(Unit) {
                 detectDragGestures { change, dragAmount ->
                     change.consume()
@@ -288,6 +556,11 @@ private fun FloatingPanel(
             Text(
                 text = runMessage ?: runState.name,
                 color = Color(0xFF455A64),
+                style = MaterialTheme.typography.bodySmall
+            )
+            Text(
+                text = "拖动面板/点击点可定位；长按点击点可编辑",
+                color = Color(0xFF607D8B),
                 style = MaterialTheme.typography.bodySmall
             )
             PanelActionButton(
@@ -315,39 +588,18 @@ private fun FloatingPanel(
 }
 
 @Composable
-private fun PanelActionButton(
-    icon: ImageVector,
-    contentDescription: String,
-    onClick: () -> Unit,
-) {
-    Box(
-        modifier = Modifier
-            .size(42.dp)
-            .background(Color(0xFFF5F5F5), CircleShape)
-            .border(1.dp, Color(0xFFE0E0E0), CircleShape),
-        contentAlignment = Alignment.Center
-    ) {
-        IconButton(onClick = onClick) {
-            Icon(
-                imageVector = icon,
-                contentDescription = contentDescription,
-                tint = Color(0xFF37474F)
-            )
-        }
-    }
-}
-
-@Composable
 private fun TargetBubble(
     label: String,
-    offset: IntOffset,
     onDrag: (IntOffset) -> Unit,
+    onLongPress: () -> Unit,
     onRemove: () -> Unit,
 ) {
     Box(
         modifier = Modifier
-            .offset { offset }
             .size(64.dp)
+            .pointerInput(Unit) {
+                detectTapGestures(onLongPress = { onLongPress() })
+            }
             .pointerInput(Unit) {
                 detectDragGestures { change, dragAmount ->
                     change.consume()
@@ -375,6 +627,29 @@ private fun TargetBubble(
             contentAlignment = Alignment.Center
         ) {
             Text("x", color = Color.White)
+        }
+    }
+}
+
+@Composable
+private fun PanelActionButton(
+    icon: ImageVector,
+    contentDescription: String,
+    onClick: () -> Unit,
+) {
+    Box(
+        modifier = Modifier
+            .size(42.dp)
+            .background(Color(0xFFF5F5F5), CircleShape)
+            .border(1.dp, Color(0xFFE0E0E0), CircleShape),
+        contentAlignment = Alignment.Center
+    ) {
+        IconButton(onClick = onClick) {
+            Icon(
+                imageVector = icon,
+                contentDescription = contentDescription,
+                tint = Color(0xFF37474F)
+            )
         }
     }
 }

@@ -36,11 +36,9 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import com.example.littleclicker.autoclick.AutoClickCoordinator
-import com.example.littleclicker.autoclick.AutoClickPoint
 import com.example.littleclicker.autoclick.AutoClickRunState
 import com.example.littleclicker.service.FloatingWindowService
 import top.yukonga.miuix.kmp.basic.Button
-import top.yukonga.miuix.kmp.basic.ButtonDefaults
 import top.yukonga.miuix.kmp.basic.Card
 import top.yukonga.miuix.kmp.basic.CardDefaults
 import top.yukonga.miuix.kmp.basic.Text
@@ -349,128 +347,40 @@ internal fun AutoClickScreen(innerPadding: PaddingValues) {
             }
         } else {
             items(profile.points, key = { it.id }) { point ->
-                PointConfigCard(point = point)
+                Card(
+                    modifier = Modifier.fillMaxWidth(),
+                    cornerRadius = 20.dp,
+                    colors = CardDefaults.defaultColors(
+                        color = Color.White,
+                        contentColor = MiuixTheme.colorScheme.onSurfaceContainer
+                    )
+                ) {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(14.dp),
+                        verticalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
+                        Text("点击点 #${point.id}", fontWeight = FontWeight.SemiBold)
+                        Text(
+                            text = "中心坐标：(${point.x}, ${point.y})",
+                            color = MiuixTheme.colorScheme.onBackgroundVariant
+                        )
+                        Text(
+                            text = "延迟/触摸/重复：${point.delayMs}ms / ${point.touchDurationMs}ms / ${point.repeatCount}",
+                            color = MiuixTheme.colorScheme.onBackgroundVariant
+                        )
+                        Text(
+                            text = "编辑方式：长按悬浮窗中的对应点击点",
+                            color = Color(0xFF1D6ED8)
+                        )
+                    }
+                }
             }
         }
 
         item {
             Spacer(modifier = Modifier.height(24.dp))
-        }
-    }
-}
-
-@Composable
-private fun PointConfigCard(point: AutoClickPoint) {
-    Card(
-        modifier = Modifier.fillMaxWidth(),
-        cornerRadius = 20.dp,
-        colors = CardDefaults.defaultColors(
-            color = Color.White,
-            contentColor = MiuixTheme.colorScheme.onSurfaceContainer
-        )
-    ) {
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(14.dp),
-            verticalArrangement = Arrangement.spacedBy(8.dp)
-        ) {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Text("点击点 #${point.id}", fontWeight = FontWeight.SemiBold)
-                Button(
-                    onClick = { AutoClickCoordinator.removePoint(point.id) },
-                    colors = ButtonDefaults.buttonColors(
-                        color = Color(0xFFFFECEC),
-                        disabledColor = Color(0xFFFFECEC),
-                    )
-                ) {
-                    Text("删除")
-                }
-            }
-
-            Text(
-                text = "坐标：(${point.x}, ${point.y})，可在悬浮窗中拖动调整",
-                color = MiuixTheme.colorScheme.onBackgroundVariant
-            )
-
-            StepperControl(
-                label = "点击延迟(ms)",
-                value = point.delayMs.toString(),
-                onDecrease = {
-                    AutoClickCoordinator.updatePointConfig(
-                        pointId = point.id,
-                        delayMs = point.delayMs - 50L
-                    )
-                },
-                onIncrease = {
-                    AutoClickCoordinator.updatePointConfig(
-                        pointId = point.id,
-                        delayMs = point.delayMs + 50L
-                    )
-                }
-            )
-
-            StepperControl(
-                label = "触摸时长(ms)",
-                value = point.touchDurationMs.toString(),
-                onDecrease = {
-                    AutoClickCoordinator.updatePointConfig(
-                        pointId = point.id,
-                        touchDurationMs = point.touchDurationMs - 10L
-                    )
-                },
-                onIncrease = {
-                    AutoClickCoordinator.updatePointConfig(
-                        pointId = point.id,
-                        touchDurationMs = point.touchDurationMs + 10L
-                    )
-                }
-            )
-
-            StepperControl(
-                label = "重复次数",
-                value = point.repeatCount.toString(),
-                onDecrease = {
-                    AutoClickCoordinator.updatePointConfig(
-                        pointId = point.id,
-                        repeatCount = point.repeatCount - 1
-                    )
-                },
-                onIncrease = {
-                    AutoClickCoordinator.updatePointConfig(
-                        pointId = point.id,
-                        repeatCount = point.repeatCount + 1
-                    )
-                }
-            )
-        }
-    }
-}
-
-@Composable
-private fun StepperControl(
-    label: String,
-    value: String,
-    onDecrease: () -> Unit,
-    onIncrease: () -> Unit,
-) {
-    Row(
-        modifier = Modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.SpaceBetween,
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        Text(label)
-        Row(
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(8.dp)
-        ) {
-            SmallActionButton(text = "-") { onDecrease() }
-            Text(value, fontWeight = FontWeight.SemiBold)
-            SmallActionButton(text = "+") { onIncrease() }
         }
     }
 }
