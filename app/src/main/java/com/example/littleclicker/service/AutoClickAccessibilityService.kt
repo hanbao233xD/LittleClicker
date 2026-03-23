@@ -166,6 +166,14 @@ class AutoClickAccessibilityService : AccessibilityService() {
                 ensureNotCancelled()
                 waitIfPaused()
 
+                val delayMs = point.delayMs.coerceAtLeast(0L)
+                if (delayMs > 0L) {
+                    delay(delayMs)
+                }
+
+                ensureNotCancelled()
+                waitIfPaused()
+
                 val dispatched = when (point.actionType) {
                     AutoClickActionType.Click -> {
                         dispatchSingleTap(
@@ -189,13 +197,6 @@ class AutoClickAccessibilityService : AccessibilityService() {
                 }
                 if (!dispatched) {
                     throw IllegalStateException("动作手势派发失败")
-                }
-
-                ensureNotCancelled()
-                waitIfPaused()
-                val delayMs = point.delayMs.coerceAtLeast(0L)
-                if (delayMs > 0) {
-                    delay(delayMs)
                 }
             }
         }

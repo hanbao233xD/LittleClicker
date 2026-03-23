@@ -1,6 +1,6 @@
 # LittleClicker 实现记录
 
-最后更新：2026-03-23
+最后更新：2026-03-24
 
 ## 2026-03-22
 - 初始化 Compose + Navigation 架构。
@@ -161,3 +161,10 @@
   - `./gradlew :app:testDebugUnitTest` 通过。
   - `adb install -r app/build/outputs/apk/debug/app-debug.apk` 安装成功。
   - 清空 logcat 后启动 App，未检出 `FATAL EXCEPTION` / `Process: com.example.littleclicker` 崩溃日志。
+
+## 2026-03-24（首次点击延迟修复）
+- 修复问题：动作 `delayMs` 原先在动作派发后执行，导致第一下点击总是立即触发。
+- 修复方案：`AutoClickAccessibilityService.executePointSequence` 调整为“先等待当前动作延迟，再派发手势”，使首次点击也遵守配置延迟。
+- 验证结果：
+  - `./gradlew :app:testDebugUnitTest` 通过。
+  - `./gradlew :app:assembleDebug` 通过。
