@@ -168,3 +168,10 @@
 - 验证结果：
   - `./gradlew :app:testDebugUnitTest` 通过。
   - `./gradlew :app:assembleDebug` 通过。
+
+## 2026-03-24（启动固定等待 100ms）
+- 需求调整：点击“开始运行”后，先固定等待 `100ms`，再执行动作队列。
+- 实现方案：`AutoClickAccessibilityService.executeProfile` 在进入循环前新增统一启动延迟（`START_TRIGGER_DELAY_MS = 100L`），并保留取消/暂停检查。
+- 验证结果：
+  - `./gradlew :app:testDebugUnitTest` 通过。
+  - `./gradlew :app:assembleDebug` 通过。

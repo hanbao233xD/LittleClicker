@@ -142,6 +142,12 @@ class AutoClickAccessibilityService : AccessibilityService() {
             throw IllegalStateException("没有可执行的点击步骤")
         }
 
+        ensureNotCancelled()
+        waitIfPaused()
+        delay(START_TRIGGER_DELAY_MS)
+        ensureNotCancelled()
+        waitIfPaused()
+
         val safeCycles = profile.cycleCount.coerceAtLeast(1)
         when (profile.runMode) {
             AutoClickRunMode.RunOnce -> {
@@ -297,6 +303,8 @@ class AutoClickAccessibilityService : AccessibilityService() {
     }
 
     companion object {
+        private const val START_TRIGGER_DELAY_MS = 100L
+
         @Volatile
         private var instance: AutoClickAccessibilityService? = null
 
