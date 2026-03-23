@@ -100,3 +100,13 @@
   - `./gradlew :app:testDebugUnitTest` 通过；
   - `adb install -r` 安装成功；
   - 清空 logcat 后启动 App，未发现 `FATAL EXCEPTION`/`AndroidRuntime` 崩溃记录。
+
+## 2026-03-23（悬浮窗状态刷新修复）
+- 修复悬浮窗面板状态不刷新问题：
+  - 删除/新增动作后，侧栏动作列表不更新；
+  - 点击“运行/录制”后，按钮图标不切换到停止态。
+- 根因修复：
+  - `ComposeView` 的 `ViewTreeLifecycleOwner` 从 `FloatingWindowService` 切换为内部 `OverlaySavedStateOwner`；
+  - 将 `OverlaySavedStateOwner` 生命周期状态从 `CREATED` 提升为 `RESUMED`，保证悬浮窗 Compose 视图持续可重组。
+- 验证结果：
+  - `./gradlew :app:assembleDebug` 通过。

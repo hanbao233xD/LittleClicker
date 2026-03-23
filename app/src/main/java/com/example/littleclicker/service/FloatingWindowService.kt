@@ -665,7 +665,7 @@ class FloatingWindowService : LifecycleService() {
 
     private fun createComposeView(): ComposeView {
         return ComposeView(this).apply {
-            setViewTreeLifecycleOwner(this@FloatingWindowService)
+            setViewTreeLifecycleOwner(viewTreeSavedStateOwner)
             setViewTreeSavedStateRegistryOwner(viewTreeSavedStateOwner)
             setViewCompositionStrategy(ViewCompositionStrategy.DisposeOnDetachedFromWindow)
         }
@@ -743,7 +743,7 @@ class FloatingWindowService : LifecycleService() {
         init {
             controller.performAttach()
             controller.performRestore(null)
-            lifecycleRegistry.currentState = Lifecycle.State.CREATED
+            lifecycleRegistry.currentState = Lifecycle.State.RESUMED
         }
 
         override val lifecycle: Lifecycle

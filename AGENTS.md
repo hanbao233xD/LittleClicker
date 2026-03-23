@@ -3,7 +3,7 @@
 ## Startup Context Rule
 在每次新对话开始时，必须按以下顺序加载上下文：
 
-1. 优先阅读项目 docs 目录的 `AI_MEMORY.md`。
+1. 优先阅读项目 docs 目录的 `docs/AI_MEMORY.md`。
 3. 再根据用户问题按需读取 `docs/` 下相关原文文件。
 4. 不要默认全量读取 `docs/` 所有文件，除非用户明确要求“全量阅读”。
 5.如果未特殊说明，所有ui使用miuix开发
