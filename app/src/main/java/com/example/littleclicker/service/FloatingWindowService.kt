@@ -16,13 +16,14 @@ import android.widget.Toast
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -37,7 +38,6 @@ import androidx.compose.material.icons.filled.AddCircleOutline
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
-import androidx.compose.material.icons.filled.FiberManualRecord
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Save
 import androidx.compose.material.icons.filled.Stop
@@ -52,9 +52,12 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.input.pointer.changedToUpIgnoreConsumed
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.input.pointer.positionChanged
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.ComposeView
 import androidx.compose.ui.platform.ViewCompositionStrategy
@@ -80,6 +83,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
+import kotlin.math.hypot
 import kotlin.math.roundToInt
 
 class FloatingWindowService : LifecycleService() {
@@ -185,12 +189,10 @@ class FloatingWindowService : LifecycleService() {
             setContent {
                 MaterialTheme {
                     val runtime by AutoClickCoordinator.runtime.collectAsState()
-                    val profile by AutoClickCoordinator.profile.collectAsState()
                     val recording by AutoClickCoordinator.recording.collectAsState()
                     FloatingPanel(
                         runState = runtime.state,
                         runMessage = runtime.message,
-                        points = profile.points,
                         isRecording = recording.isRecording,
                         onSizeChanged = { size ->
                             panelSize = size
@@ -557,15 +559,47 @@ class FloatingWindowService : LifecycleService() {
                     modifier = Modifier
                         .fillMaxSize()
                         .pointerInput(Unit) {
-                            detectTapGestures { offset ->
-                                val point = AutoClickCoordinator.addRecordedTap(
-                                    x = offset.x.roundToInt(),
-                                    y = offset.y.roundToInt()
+                            awaitEachGesture {
+                                val down = awaitFirstDown(requireUnconsumed = false)
+                                val start = down.position
+                                var last = start
+                                var moved = false
+
+                                while (true) {
+                                    val event = awaitPointerEvent()
+                                    val change = event.changes.firstOrNull { it.id == down.id }
+                                        ?: event.changes.firstOrNull()
+                                        ?: break
+                                    if (change.positionChanged()) {
+                                        moved = true
+                                        last = change.position
+                                    }
+                                    if (change.changedToUpIgnoreConsumed()) {
+                                        last = change.position
+                                        break
+                                    }
+                                    if (!change.pressed) {
+                                        break
+                                    }
+                                }
+
+                                val actionType = if (isSwipeGesture(start, last, moved)) {
+                                    AutoClickActionType.Swipe
+                                } else {
+                                    AutoClickActionType.Click
+                                }
+                                val recorded = AutoClickCoordinator.addRecordedAction(
+                                    actionType = actionType,
+                                    startX = start.x.roundToInt(),
+                                    startY = start.y.roundToInt(),
+                                    endX = if (actionType == AutoClickActionType.Swipe) last.x.roundToInt() else null,
+                                    endY = if (actionType == AutoClickActionType.Swipe) last.y.roundToInt() else null
                                 )
-                                if (point != null) {
+                                if (recorded != null) {
+                                    val count = AutoClickCoordinator.recording.value.recordedCount
                                     Toast.makeText(
                                         this@FloatingWindowService,
-                                        "已录制 ${AutoClickCoordinator.recording.value.recordedCount}.${point.actionType.displayName}",
+                                        "已录制 $count.${recorded.actionType.displayName}",
                                         Toast.LENGTH_SHORT
                                     ).show()
                                 }
@@ -586,6 +620,13 @@ class FloatingWindowService : LifecycleService() {
         windowManager.addView(view, params)
         recordCaptureView = view
         recordCaptureLayoutParams = params
+    }
+
+    private fun isSwipeGesture(start: Offset, end: Offset, moved: Boolean): Boolean {
+        if (!moved) return false
+        val dx = (end.x - start.x).toDouble()
+        val dy = (end.y - start.y).toDouble()
+        return hypot(dx, dy) >= 24.0
     }
 
     private fun setRecordCaptureTouchable(touchable: Boolean) {
@@ -726,7 +767,6 @@ private data class PointOverlay(
 private fun FloatingPanel(
     runState: AutoClickRunState,
     runMessage: String?,
-    points: List<AutoClickPoint>,
     isRecording: Boolean,
     onSizeChanged: (IntSize) -> Unit,
     onDrag: (IntOffset) -> Unit,
@@ -739,6 +779,8 @@ private fun FloatingPanel(
     onDeletePoint: (AutoClickPoint) -> Unit,
     onClose: () -> Unit,
 ) {
+    val profile by AutoClickCoordinator.profile.collectAsState()
+    val points = profile.points
     val actionSummary = if (points.isEmpty()) {
         "暂无动作"
     } else {
@@ -746,13 +788,7 @@ private fun FloatingPanel(
     }
     Card(
         modifier = Modifier
-            .onSizeChanged(onSizeChanged)
-            .pointerInput(Unit) {
-                detectDragGestures { change, dragAmount ->
-                    change.consume()
-                    onDrag(IntOffset(dragAmount.x.roundToInt(), dragAmount.y.roundToInt()))
-                }
-            },
+            .onSizeChanged(onSizeChanged),
         shape = RoundedCornerShape(16.dp),
         colors = CardDefaults.cardColors(containerColor = Color(0xEFFFFAF2))
     ) {
@@ -760,6 +796,18 @@ private fun FloatingPanel(
             modifier = Modifier.padding(12.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp)
         ) {
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(16.dp)
+                    .background(Color(0xFFE0E0E0), RoundedCornerShape(8.dp))
+                    .pointerInput(Unit) {
+                        detectDragGestures { change, dragAmount ->
+                            change.consume()
+                            onDrag(IntOffset(dragAmount.x.roundToInt(), dragAmount.y.roundToInt()))
+                        }
+                    }
+            )
             Text(text = "自动点击悬浮窗", color = Color(0xFF263238))
             Text(
                 text = runMessage ?: runState.name,
@@ -789,7 +837,7 @@ private fun FloatingPanel(
                         onClick = onToggleRun
                     )
                     PanelActionButton(
-                        icon = if (isRecording) Icons.Filled.Stop else Icons.Filled.FiberManualRecord,
+                        label = if (isRecording) "停" else "录",
                         contentDescription = if (isRecording) "停止录制" else "录制",
                         onClick = onToggleRecord
                     )
@@ -944,7 +992,8 @@ private fun ActionItemRow(
 
 @Composable
 private fun PanelActionButton(
-    icon: ImageVector,
+    icon: ImageVector? = null,
+    label: String? = null,
     contentDescription: String,
     onClick: () -> Unit,
 ) {
@@ -956,11 +1005,19 @@ private fun PanelActionButton(
         contentAlignment = Alignment.Center
     ) {
         IconButton(onClick = onClick) {
-            Icon(
-                imageVector = icon,
-                contentDescription = contentDescription,
-                tint = Color(0xFF37474F)
-            )
+            if (label != null) {
+                Text(
+                    text = label,
+                    color = Color(0xFF37474F),
+                    style = MaterialTheme.typography.titleMedium
+                )
+            } else {
+                Icon(
+                    imageVector = icon ?: Icons.Filled.PlayArrow,
+                    contentDescription = contentDescription,
+                    tint = Color(0xFF37474F)
+                )
+            }
         }
     }
 }

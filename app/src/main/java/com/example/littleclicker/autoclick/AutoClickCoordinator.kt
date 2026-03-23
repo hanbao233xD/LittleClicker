@@ -170,6 +170,22 @@ object AutoClickCoordinator {
     }
 
     fun addRecordedTap(x: Int, y: Int): AutoClickPoint? {
+        return addRecordedAction(
+            actionType = AutoClickActionType.Click,
+            startX = x,
+            startY = y,
+            endX = null,
+            endY = null
+        )
+    }
+
+    fun addRecordedAction(
+        actionType: AutoClickActionType,
+        startX: Int,
+        startY: Int,
+        endX: Int? = null,
+        endY: Int? = null,
+    ): AutoClickPoint? {
         val recordState = _recording.value
         if (!recordState.isRecording) return null
         val now = System.currentTimeMillis()
@@ -182,11 +198,23 @@ object AutoClickCoordinator {
         var created: AutoClickPoint? = null
         updateProfile { current ->
             val nextId = (current.points.maxOfOrNull { it.id } ?: 0) + 1
+            val safeStartX = startX.coerceAtLeast(0)
+            val safeStartY = startY.coerceAtLeast(0)
             val point = AutoClickPoint(
                 id = nextId,
-                x = x.coerceAtLeast(0),
-                y = y.coerceAtLeast(0),
-                actionType = AutoClickActionType.Click,
+                x = safeStartX,
+                y = safeStartY,
+                actionType = actionType,
+                endX = if (actionType == AutoClickActionType.Swipe) {
+                    (endX ?: safeStartX).coerceAtLeast(0)
+                } else {
+                    null
+                },
+                endY = if (actionType == AutoClickActionType.Swipe) {
+                    (endY ?: safeStartY).coerceAtLeast(0)
+                } else {
+                    null
+                },
                 delayMs = delay,
                 touchDurationMs = 50L,
                 repeatCount = 1
