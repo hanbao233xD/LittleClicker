@@ -122,13 +122,13 @@ internal fun AutoClickScreen(innerPadding: PaddingValues) {
     ) {
         item {
             Text(
-                text = "自动点击",
+                text = "定时点击器Ultra",
                 style = MiuixTheme.textStyles.title1,
                 fontWeight = FontWeight.Bold
             )
             Spacer(modifier = Modifier.height(4.dp))
             Text(
-                text = "默认进入自动点击模式。录制与运行控制已整合到自动点击悬浮窗。",
+                text = "你的抢购、任务助手。官网：https://littlecold.cn",
                 color = MiuixTheme.colorScheme.onBackgroundVariant
             )
         }
@@ -152,7 +152,7 @@ internal fun AutoClickScreen(innerPadding: PaddingValues) {
                         fontWeight = FontWeight.Bold
                     )
                     Text(
-                        text = "权限已就绪，授权提示已自动隐藏。",
+                        text = "权限已就绪，准备开始点击",
                         color = Color(0xFF1F8B4C)
                     )
                 }
@@ -196,7 +196,7 @@ internal fun AutoClickScreen(innerPadding: PaddingValues) {
                             }
                         },
                         title = "悬浮窗开关",
-                        summary = "自动点击的开始/停止请在悬浮窗中操作"
+                        summary = "请先给予应用所需权限"
                     )
                     val navigationEventOwner = rememberNavigationEventDispatcherOwner(parent = null)
                     CompositionLocalProvider(LocalNavigationEventDispatcherOwner provides navigationEventOwner) {
@@ -217,7 +217,7 @@ internal fun AutoClickScreen(innerPadding: PaddingValues) {
                     }
                     if (!allGranted) {
                         Text(
-                            text = "提示：建议先完成全部权限授权，再进行自动点击。",
+                            text = "提示：本软件永久免费，",
                             color = MiuixTheme.colorScheme.onBackgroundVariant
                         )
                     }
