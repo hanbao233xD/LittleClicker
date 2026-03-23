@@ -123,3 +123,10 @@
 - 验证结果：
   - `./gradlew :app:assembleDebug` 通过；
   - `./gradlew :app:testDebugUnitTest` 通过。
+
+## 2026-03-23（AutoClick 提示词库随机展示）
+- 自动点击页提示文案改为词库随机展示：
+  - 新增资源文件：`app/src/main/res/raw/autoclick_tips.txt`（每行一条提示）。
+  - `AutoClickScreen` 中新增词库读取与随机选择逻辑，权限未齐全时展示 `提示：{随机文案}`。
+- 稳定性兜底：
+  - 读取失败、资源为空或全空行时，自动回退到默认文案，避免页面空提示或崩溃。

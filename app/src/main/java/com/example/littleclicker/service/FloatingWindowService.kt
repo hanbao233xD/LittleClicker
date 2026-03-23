@@ -808,17 +808,7 @@ private fun FloatingPanel(
                         }
                     }
             )
-            Text(text = "自动点击悬浮窗", color = Color(0xFF263238))
-            Text(
-                text = runMessage ?: runState.name,
-                color = Color(0xFF455A64),
-                style = MaterialTheme.typography.bodySmall
-            )
-            Text(
-                text = actionSummary,
-                color = Color(0xFF607D8B),
-                style = MaterialTheme.typography.bodySmall
-            )
+            Text(text = "定时点击器Ultra(拖动小白条移动位置)", color = Color(0xFF263238))
             Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                 Column(
                     verticalArrangement = Arrangement.spacedBy(8.dp)

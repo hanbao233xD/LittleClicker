@@ -1,5 +1,6 @@
 package com.example.littleclicker.ui
 
+import android.content.Context
 import android.content.Intent
 import android.provider.Settings
 import android.widget.Toast
@@ -37,10 +38,12 @@ import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.navigationevent.compose.LocalNavigationEventDispatcherOwner
 import androidx.navigationevent.compose.rememberNavigationEventDispatcherOwner
 import com.example.littleclicker.ConfigManageActivity
+import com.example.littleclicker.R
 import com.example.littleclicker.autoclick.AutoClickCoordinator
 import com.example.littleclicker.autoclick.AutoClickRunMode
 import com.example.littleclicker.autoclick.displayName
 import com.example.littleclicker.service.FloatingWindowService
+import kotlin.random.Random
 import top.yukonga.miuix.kmp.basic.Button
 import top.yukonga.miuix.kmp.basic.Card
 import top.yukonga.miuix.kmp.basic.CardDefaults
@@ -102,6 +105,7 @@ internal fun AutoClickScreen(innerPadding: PaddingValues) {
     val pendingStatuses = statuses.filterNot { it.granted }
     val allGranted = pendingStatuses.isEmpty()
     val expiredSchedule = profile.startAtMillis?.let { it <= System.currentTimeMillis() } == true
+    val randomTip = remember(refreshToken) { context.loadRandomAutoClickTip() }
     val runModeItems = listOf("运行一次", "循环运行直至手动停止")
     val selectedRunModeIndex = when (profile.runMode) {
         AutoClickRunMode.RunOnce -> 0
@@ -128,7 +132,7 @@ internal fun AutoClickScreen(innerPadding: PaddingValues) {
             )
             Spacer(modifier = Modifier.height(4.dp))
             Text(
-                text = "你的抢购、任务助手。官网：https://littlecold.cn",
+                text = "你的抢购、任务助手。本软件永久免费，下载：https://littlecold.cn",
                 color = MiuixTheme.colorScheme.onBackgroundVariant
             )
         }
@@ -217,7 +221,7 @@ internal fun AutoClickScreen(innerPadding: PaddingValues) {
                     }
                     if (!allGranted) {
                         Text(
-                            text = "提示：本软件永久免费，",
+                            text = "提示：$randomTip",
                             color = MiuixTheme.colorScheme.onBackgroundVariant
                         )
                     }
@@ -373,6 +377,21 @@ internal fun AutoClickScreen(innerPadding: PaddingValues) {
             Spacer(modifier = Modifier.height(24.dp))
         }
     }
+}
+
+private fun Context.loadRandomAutoClickTip(): String {
+    val fallback = "本软件永久免费，欢迎使用。"
+    return runCatching {
+        resources.openRawResource(R.raw.autoclick_tips).bufferedReader().useLines { lines ->
+            lines
+                .map(String::trim)
+                .filter(String::isNotEmpty)
+                .toList()
+        }
+    }.getOrDefault(emptyList())
+        .takeIf { it.isNotEmpty() }
+        ?.let { tips -> tips[Random.nextInt(tips.size)] }
+        ?: fallback
 }
 
 @Composable
