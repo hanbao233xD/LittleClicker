@@ -17,6 +17,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -33,6 +34,8 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
+import androidx.navigationevent.compose.LocalNavigationEventDispatcherOwner
+import androidx.navigationevent.compose.rememberNavigationEventDispatcherOwner
 import com.example.littleclicker.ConfigManageActivity
 import com.example.littleclicker.autoclick.AutoClickCoordinator
 import com.example.littleclicker.autoclick.AutoClickRunMode
@@ -269,20 +272,23 @@ internal fun AutoClickScreen(innerPadding: PaddingValues) {
                         title = "悬浮窗开关",
                         summary = "自动点击的开始/停止请在悬浮窗中操作"
                     )
-                    WindowDropdown(
-                        items = runModeItems,
-                        selectedIndex = selectedRunModeIndex,
-                        title = "运行方式",
-                        summary = "运行方式将保存到当前配置",
-                        onSelectedIndexChange = { index ->
-                            val mode = if (index == 0) {
-                                AutoClickRunMode.RunOnce
-                            } else {
-                                AutoClickRunMode.LoopUntilStopped
+                    val navigationEventOwner = rememberNavigationEventDispatcherOwner(parent = null)
+                    CompositionLocalProvider(LocalNavigationEventDispatcherOwner provides navigationEventOwner) {
+                        WindowDropdown(
+                            items = runModeItems,
+                            selectedIndex = selectedRunModeIndex,
+                            title = "运行方式",
+                            summary = "运行方式将保存到当前配置",
+                            onSelectedIndexChange = { index ->
+                                val mode = if (index == 0) {
+                                    AutoClickRunMode.RunOnce
+                                } else {
+                                    AutoClickRunMode.LoopUntilStopped
+                                }
+                                AutoClickCoordinator.updateRunMode(mode)
                             }
-                            AutoClickCoordinator.updateRunMode(mode)
-                        }
-                    )
+                        )
+                    }
                     if (!allGranted) {
                         Text(
                             text = "提示：建议先完成全部权限授权，再进行自动点击。",
