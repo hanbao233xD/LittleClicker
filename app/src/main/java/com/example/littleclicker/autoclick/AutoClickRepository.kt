@@ -21,6 +21,28 @@ object AutoClickRepository {
         val activeProfileId: String? = null,
     )
 
+    private data class AutoClickPointPayload(
+        val id: Int? = null,
+        val x: Int? = null,
+        val y: Int? = null,
+        val actionType: String? = null,
+        val endX: Int? = null,
+        val endY: Int? = null,
+        val delayMs: Long? = null,
+        val touchDurationMs: Long? = null,
+        val repeatCount: Int? = null,
+    )
+
+    private data class AutoClickProfilePayload(
+        val id: String? = null,
+        val name: String? = null,
+        val points: List<AutoClickPointPayload>? = null,
+        val cycleCount: Int? = null,
+        val runMode: String? = null,
+        val startAtMillis: Long? = null,
+        val updatedAt: Long? = null,
+    )
+
     fun loadActiveProfile(context: Context): AutoClickProfile {
         migrateLegacyProfileIfNeeded(context)
 
@@ -138,7 +160,43 @@ object AutoClickRepository {
 
     fun profileToJson(profile: AutoClickProfile): String = gson.toJson(profile)
 
-    fun profileFromJson(json: String): AutoClickProfile = gson.fromJson(json, AutoClickProfile::class.java)
+    fun profileFromJson(json: String): AutoClickProfile {
+        val payload = gson.fromJson(json, AutoClickProfilePayload::class.java) ?: AutoClickProfilePayload()
+        val normalizedPoints = payload.points.orEmpty().mapIndexed { index, point ->
+            val x = (point.x ?: 0).coerceAtLeast(0)
+            val y = (point.y ?: 0).coerceAtLeast(0)
+            val actionType = parseActionType(point.actionType)
+            AutoClickPoint(
+                id = (point.id ?: (index + 1)).coerceAtLeast(1),
+                x = x,
+                y = y,
+                actionType = actionType,
+                endX = if (actionType == AutoClickActionType.Swipe) {
+                    (point.endX ?: (x + 200)).coerceAtLeast(0)
+                } else {
+                    null
+                },
+                endY = if (actionType == AutoClickActionType.Swipe) {
+                    (point.endY ?: y).coerceAtLeast(0)
+                } else {
+                    null
+                },
+                delayMs = (point.delayMs ?: 200L).coerceAtLeast(0L),
+                touchDurationMs = (point.touchDurationMs ?: 50L).coerceAtLeast(1L),
+                repeatCount = (point.repeatCount ?: 1).coerceAtLeast(1)
+            )
+        }
+
+        return AutoClickProfile(
+            id = payload.id?.takeIf { it.isNotBlank() } ?: DEFAULT_PROFILE_ID,
+            name = payload.name?.takeIf { it.isNotBlank() } ?: DEFAULT_PROFILE_NAME,
+            points = normalizedPoints,
+            cycleCount = (payload.cycleCount ?: 1).coerceAtLeast(1),
+            runMode = parseRunMode(payload.runMode),
+            startAtMillis = payload.startAtMillis,
+            updatedAt = payload.updatedAt ?: System.currentTimeMillis()
+        )
+    }
 
     fun draftToJson(draft: ScriptDraft): String = gson.toJson(draft)
 
@@ -201,5 +259,21 @@ object AutoClickRepository {
     private fun sanitizeFileName(raw: String): String {
         if (raw.isBlank()) return DEFAULT_PROFILE_ID
         return raw.replace(Regex("[^a-zA-Z0-9._-]"), "_")
+    }
+
+    private fun parseActionType(raw: String?): AutoClickActionType {
+        return if (raw.equals("Swipe", ignoreCase = true)) {
+            AutoClickActionType.Swipe
+        } else {
+            AutoClickActionType.Click
+        }
+    }
+
+    private fun parseRunMode(raw: String?): AutoClickRunMode {
+        return if (raw.equals("LoopUntilStopped", ignoreCase = true)) {
+            AutoClickRunMode.LoopUntilStopped
+        } else {
+            AutoClickRunMode.RunOnce
+        }
     }
 }

@@ -32,6 +32,9 @@ object AutoClickCoordinator {
     private val _runtime = MutableStateFlow(AutoClickRuntime())
     val runtime: StateFlow<AutoClickRuntime> = _runtime.asStateFlow()
 
+    private val _recording = MutableStateFlow(AutoClickRecordingState())
+    val recording: StateFlow<AutoClickRecordingState> = _recording.asStateFlow()
+
     private val _scriptDrafts = MutableStateFlow<List<ScriptDraft>>(emptyList())
     val scriptDrafts: StateFlow<List<ScriptDraft>> = _scriptDrafts.asStateFlow()
 
@@ -150,11 +153,96 @@ object AutoClickCoordinator {
     }
 
     fun addPoint() {
+        addAction(AutoClickActionType.Click)
+    }
+
+    fun addAction(actionType: AutoClickActionType): AutoClickPoint {
+        var created: AutoClickPoint? = null
+        updateProfile { current ->
+            val next = createPoint(
+                current = current,
+                actionType = actionType
+            )
+            created = next
+            current.copy(points = current.points + next)
+        }
+        return requireNotNull(created) { "新增动作失败：未生成动作点" }
+    }
+
+    fun addRecordedTap(x: Int, y: Int): AutoClickPoint? {
+        val recordState = _recording.value
+        if (!recordState.isRecording) return null
+        val now = System.currentTimeMillis()
+        val delay = if (recordState.recordedCount == 0) {
+            0L
+        } else {
+            (now - (recordState.lastTapAtMillis ?: now)).coerceAtLeast(0L)
+        }
+
+        var created: AutoClickPoint? = null
         updateProfile { current ->
             val nextId = (current.points.maxOfOrNull { it.id } ?: 0) + 1
-            val base = 240 + current.points.size * 120
-            current.copy(points = current.points + AutoClickPoint(id = nextId, x = base, y = base))
+            val point = AutoClickPoint(
+                id = nextId,
+                x = x.coerceAtLeast(0),
+                y = y.coerceAtLeast(0),
+                actionType = AutoClickActionType.Click,
+                delayMs = delay,
+                touchDurationMs = 50L,
+                repeatCount = 1
+            )
+            created = point
+            current.copy(points = current.points + point)
         }
+
+        _recording.value = AutoClickRecordingState(
+            isRecording = true,
+            recordedCount = recordState.recordedCount + 1,
+            lastTapAtMillis = now
+        )
+        return created
+    }
+
+    fun startRecording(): Boolean {
+        if (_recording.value.isRecording) return false
+        if (_runtime.value.state == AutoClickRunState.Running || _runtime.value.state == AutoClickRunState.Paused) {
+            _runtime.value = AutoClickRuntime(
+                state = AutoClickRunState.Failed,
+                message = "运行中不可录制，请先停止"
+            )
+            return false
+        }
+        _recording.value = AutoClickRecordingState(isRecording = true)
+        _runtime.value = AutoClickRuntime(
+            state = AutoClickRunState.Idle,
+            message = "录制中：点击屏幕可添加动作"
+        )
+        return true
+    }
+
+    fun stopRecording(): Boolean {
+        if (!_recording.value.isRecording) return false
+        val count = _recording.value.recordedCount
+        _recording.value = AutoClickRecordingState(isRecording = false)
+        _runtime.value = AutoClickRuntime(
+            state = AutoClickRunState.Idle,
+            message = "录制结束，共记录 $count 个动作"
+        )
+        return true
+    }
+
+    fun removeLatestPoint(): AutoClickPoint? {
+        var removed: AutoClickPoint? = null
+        updateProfile { current ->
+            val latest = current.points.lastOrNull()
+            removed = latest
+            if (latest == null) {
+                current
+            } else {
+                current.copy(points = current.points.dropLast(1))
+            }
+        }
+        return removed
     }
 
     fun removePoint(pointId: Int) {
@@ -188,10 +276,13 @@ object AutoClickCoordinator {
                     if (point.id != pointId) {
                         point
                     } else {
-                        point.copy(
-                            x = x.coerceAtLeast(0),
-                            y = y.coerceAtLeast(0)
-                        )
+                        val safeX = x.coerceAtLeast(0)
+                        val safeY = y.coerceAtLeast(0)
+                        val dx = safeX - point.x
+                        val dy = safeY - point.y
+                        val movedEndX = point.endX?.plus(dx)?.coerceAtLeast(0)
+                        val movedEndY = point.endY?.plus(dy)?.coerceAtLeast(0)
+                        point.copy(x = safeX, y = safeY, endX = movedEndX, endY = movedEndY)
                     }
                 }
             )
@@ -202,6 +293,9 @@ object AutoClickCoordinator {
         pointId: Int,
         x: Int? = null,
         y: Int? = null,
+        actionType: AutoClickActionType? = null,
+        endX: Int? = null,
+        endY: Int? = null,
         delayMs: Long? = null,
         touchDurationMs: Long? = null,
         repeatCount: Int? = null,
@@ -212,9 +306,23 @@ object AutoClickCoordinator {
                     if (point.id != pointId) {
                         point
                     } else {
+                        val resolvedType = actionType ?: point.actionType
+                        val resolvedX = x?.coerceAtLeast(0) ?: point.x
+                        val resolvedY = y?.coerceAtLeast(0) ?: point.y
+                        val resolvedEndX = when (resolvedType) {
+                            AutoClickActionType.Click -> null
+                            AutoClickActionType.Swipe -> (endX ?: point.endX ?: (resolvedX + 200)).coerceAtLeast(0)
+                        }
+                        val resolvedEndY = when (resolvedType) {
+                            AutoClickActionType.Click -> null
+                            AutoClickActionType.Swipe -> (endY ?: point.endY ?: resolvedY).coerceAtLeast(0)
+                        }
                         point.copy(
-                            x = x?.coerceAtLeast(0) ?: point.x,
-                            y = y?.coerceAtLeast(0) ?: point.y,
+                            x = resolvedX,
+                            y = resolvedY,
+                            actionType = resolvedType,
+                            endX = resolvedEndX,
+                            endY = resolvedEndY,
                             delayMs = delayMs?.coerceAtLeast(0L) ?: point.delayMs,
                             touchDurationMs = touchDurationMs?.coerceAtLeast(1L) ?: point.touchDurationMs,
                             repeatCount = repeatCount?.coerceAtLeast(1) ?: point.repeatCount
@@ -281,6 +389,14 @@ object AutoClickCoordinator {
     fun startNow(fromSchedule: Boolean = false): Boolean {
         cancelSchedule()
 
+        if (_recording.value.isRecording) {
+            _runtime.value = AutoClickRuntime(
+                state = AutoClickRunState.Failed,
+                message = "录制中，无法开始运行"
+            )
+            return false
+        }
+
         val profileSnapshot = _profile.value
         if (profileSnapshot.points.isEmpty()) {
             _runtime.value = AutoClickRuntime(
@@ -333,6 +449,9 @@ object AutoClickCoordinator {
 
     fun stop(): Boolean {
         cancelSchedule()
+        if (_recording.value.isRecording) {
+            _recording.value = AutoClickRecordingState(isRecording = false)
+        }
         val stopped = AutoClickAccessibilityService.stop()
         if (stopped) {
             _runtime.value = AutoClickRuntime(
@@ -436,13 +555,49 @@ object AutoClickCoordinator {
             updated.copy(
                 cycleCount = updated.cycleCount.coerceAtLeast(1),
                 points = updated.points.map { point ->
+                    val normalizedType = point.actionType
                     point.copy(
+                        actionType = normalizedType,
+                        endX = when (normalizedType) {
+                            AutoClickActionType.Click -> null
+                            AutoClickActionType.Swipe -> (point.endX ?: (point.x + 200)).coerceAtLeast(0)
+                        },
+                        endY = when (normalizedType) {
+                            AutoClickActionType.Click -> null
+                            AutoClickActionType.Swipe -> (point.endY ?: point.y).coerceAtLeast(0)
+                        },
                         delayMs = point.delayMs.coerceAtLeast(0L),
                         touchDurationMs = point.touchDurationMs.coerceAtLeast(1L),
                         repeatCount = point.repeatCount.coerceAtLeast(1)
                     )
                 },
                 updatedAt = System.currentTimeMillis()
+            )
+        }
+    }
+
+    private fun createPoint(
+        current: AutoClickProfile,
+        actionType: AutoClickActionType,
+    ): AutoClickPoint {
+        val nextId = (current.points.maxOfOrNull { it.id } ?: 0) + 1
+        val base = 240 + current.points.size * 120
+        val boundedBase = base.coerceAtLeast(0)
+        return when (actionType) {
+            AutoClickActionType.Click -> AutoClickPoint(
+                id = nextId,
+                x = boundedBase,
+                y = boundedBase,
+                actionType = AutoClickActionType.Click
+            )
+
+            AutoClickActionType.Swipe -> AutoClickPoint(
+                id = nextId,
+                x = boundedBase,
+                y = boundedBase,
+                actionType = AutoClickActionType.Swipe,
+                endX = boundedBase + 200,
+                endY = boundedBase
             )
         }
     }

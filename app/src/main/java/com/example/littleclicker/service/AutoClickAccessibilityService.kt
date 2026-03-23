@@ -4,6 +4,7 @@ import android.accessibilityservice.AccessibilityService
 import android.accessibilityservice.GestureDescription
 import android.graphics.Path
 import android.view.accessibility.AccessibilityEvent
+import com.example.littleclicker.autoclick.AutoClickActionType
 import com.example.littleclicker.autoclick.AutoClickCoordinator
 import com.example.littleclicker.autoclick.AutoClickPoint
 import com.example.littleclicker.autoclick.AutoClickProfile
@@ -165,13 +166,29 @@ class AutoClickAccessibilityService : AccessibilityService() {
                 ensureNotCancelled()
                 waitIfPaused()
 
-                val dispatched = dispatchSingleTap(
-                    x = point.x,
-                    y = point.y,
-                    durationMs = point.touchDurationMs.coerceAtLeast(1L)
-                )
+                val dispatched = when (point.actionType) {
+                    AutoClickActionType.Click -> {
+                        dispatchSingleTap(
+                            x = point.x,
+                            y = point.y,
+                            durationMs = point.touchDurationMs.coerceAtLeast(1L)
+                        )
+                    }
+
+                    AutoClickActionType.Swipe -> {
+                        val endX = point.endX ?: (point.x + 200)
+                        val endY = point.endY ?: point.y
+                        dispatchSwipe(
+                            startX = point.x,
+                            startY = point.y,
+                            endX = endX,
+                            endY = endY,
+                            durationMs = point.touchDurationMs.coerceAtLeast(1L)
+                        )
+                    }
+                }
                 if (!dispatched) {
-                    throw IllegalStateException("点击手势派发失败")
+                    throw IllegalStateException("动作手势派发失败")
                 }
 
                 ensureNotCancelled()
@@ -206,6 +223,48 @@ class AutoClickAccessibilityService : AccessibilityService() {
                 moveTo(x.toFloat(), y.toFloat())
             }
 
+            val stroke = GestureDescription.StrokeDescription(
+                path,
+                0L,
+                durationMs.coerceAtLeast(1L)
+            )
+            val gesture = GestureDescription.Builder().addStroke(stroke).build()
+            val started = dispatchGesture(
+                gesture,
+                object : GestureResultCallback() {
+                    override fun onCompleted(gestureDescription: GestureDescription?) {
+                        if (continuation.isActive) {
+                            continuation.resume(true)
+                        }
+                    }
+
+                    override fun onCancelled(gestureDescription: GestureDescription?) {
+                        if (continuation.isActive) {
+                            continuation.resume(false)
+                        }
+                    }
+                },
+                null
+            )
+
+            if (!started && continuation.isActive) {
+                continuation.resume(false)
+            }
+        }
+    }
+
+    private suspend fun dispatchSwipe(
+        startX: Int,
+        startY: Int,
+        endX: Int,
+        endY: Int,
+        durationMs: Long,
+    ): Boolean {
+        return suspendCancellableCoroutine { continuation ->
+            val path = Path().apply {
+                moveTo(startX.toFloat(), startY.toFloat())
+                lineTo(endX.toFloat(), endY.toFloat())
+            }
             val stroke = GestureDescription.StrokeDescription(
                 path,
                 0L,

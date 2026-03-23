@@ -4,6 +4,9 @@ data class AutoClickPoint(
     val id: Int,
     val x: Int,
     val y: Int,
+    val actionType: AutoClickActionType = AutoClickActionType.Click,
+    val endX: Int? = null,
+    val endY: Int? = null,
     val delayMs: Long = 200L,
     val touchDurationMs: Long = 50L,
     val repeatCount: Int = 1,
@@ -27,6 +30,17 @@ data class ScriptDraft(
     val updatedAt: Long,
 )
 
+enum class AutoClickActionType {
+    Click,
+    Swipe,
+}
+
+val AutoClickActionType.displayName: String
+    get() = when (this) {
+        AutoClickActionType.Click -> "点击"
+        AutoClickActionType.Swipe -> "滑动"
+    }
+
 enum class AutoClickRunState {
     Idle,
     Scheduled,
@@ -47,10 +61,19 @@ data class AutoClickRuntime(
     val scheduledAtMillis: Long? = null,
 )
 
+data class AutoClickRecordingState(
+    val isRecording: Boolean = false,
+    val recordedCount: Int = 0,
+    val lastTapAtMillis: Long? = null,
+)
+
 data class AutoClickStep(
     val pointId: Int,
     val x: Int,
     val y: Int,
+    val actionType: AutoClickActionType,
+    val endX: Int?,
+    val endY: Int?,
     val delayMs: Long,
     val touchDurationMs: Long,
 )
@@ -68,6 +91,9 @@ fun AutoClickProfile.expandExecutionSteps(): List<AutoClickStep> {
                     pointId = point.id,
                     x = point.x,
                     y = point.y,
+                    actionType = point.actionType,
+                    endX = point.endX,
+                    endY = point.endY,
                     delayMs = point.delayMs.coerceAtLeast(0L),
                     touchDurationMs = point.touchDurationMs.coerceAtLeast(1L)
                 )

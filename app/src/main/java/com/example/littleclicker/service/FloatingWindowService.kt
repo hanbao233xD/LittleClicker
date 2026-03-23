@@ -22,13 +22,22 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.AddCircleOutline
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.Edit
+import androidx.compose.material.icons.filled.FiberManualRecord
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Save
 import androidx.compose.material.icons.filled.Stop
@@ -62,8 +71,10 @@ import androidx.savedstate.SavedStateRegistryController
 import androidx.savedstate.SavedStateRegistryOwner
 import androidx.savedstate.setViewTreeSavedStateRegistryOwner
 import com.example.littleclicker.autoclick.AutoClickCoordinator
+import com.example.littleclicker.autoclick.AutoClickActionType
 import com.example.littleclicker.autoclick.AutoClickPoint
 import com.example.littleclicker.autoclick.AutoClickRunState
+import com.example.littleclicker.autoclick.displayName
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -77,16 +88,19 @@ class FloatingWindowService : LifecycleService() {
 
     private var panelView: ComposeView? = null
     private var panelLayoutParams: WindowManager.LayoutParams? = null
+    private var recordCaptureView: ComposeView? = null
+    private var recordCaptureLayoutParams: WindowManager.LayoutParams? = null
     private var panelSize: IntSize = IntSize.Zero
     private var panelOffset: IntOffset = IntOffset(72, 180)
 
     private val pointViews = linkedMapOf<Int, PointOverlay>()
     private var profileCollectJob: Job? = null
     private var runtimeCollectJob: Job? = null
+    private var recordingCollectJob: Job? = null
     private var pointEditDialog: AlertDialog? = null
 
     private val bubbleSizePx by lazy {
-        (64f * resources.displayMetrics.density).roundToInt()
+        (76f * resources.displayMetrics.density).roundToInt()
     }
     private val bubbleHalfPx: Int
         get() = bubbleSizePx / 2
@@ -132,6 +146,7 @@ class FloatingWindowService : LifecycleService() {
         }
 
         windowManager = getSystemService(WINDOW_SERVICE) as WindowManager
+        createRecordCaptureOverlay()
         createPanelOverlay()
         syncPointOverlays(AutoClickCoordinator.profile.value.points)
         _overlayVisible.value = true
@@ -146,7 +161,20 @@ class FloatingWindowService : LifecycleService() {
         runtimeCollectJob?.cancel()
         runtimeCollectJob = lifecycleScope.launch {
             AutoClickCoordinator.runtime.collect { runtime ->
-                val touchable = runtime.state != AutoClickRunState.Running
+                val touchable = runtime.state != AutoClickRunState.Running &&
+                    runtime.state != AutoClickRunState.Paused &&
+                    !AutoClickCoordinator.recording.value.isRecording
+                setPointOverlaysTouchable(touchable)
+            }
+        }
+
+        recordingCollectJob?.cancel()
+        recordingCollectJob = lifecycleScope.launch {
+            AutoClickCoordinator.recording.collect { recording ->
+                setRecordCaptureTouchable(recording.isRecording)
+                val touchable = !recording.isRecording &&
+                    AutoClickCoordinator.runtime.value.state != AutoClickRunState.Running &&
+                    AutoClickCoordinator.runtime.value.state != AutoClickRunState.Paused
                 setPointOverlaysTouchable(touchable)
             }
         }
@@ -157,9 +185,13 @@ class FloatingWindowService : LifecycleService() {
             setContent {
                 MaterialTheme {
                     val runtime by AutoClickCoordinator.runtime.collectAsState()
+                    val profile by AutoClickCoordinator.profile.collectAsState()
+                    val recording by AutoClickCoordinator.recording.collectAsState()
                     FloatingPanel(
                         runState = runtime.state,
                         runMessage = runtime.message,
+                        points = profile.points,
+                        isRecording = recording.isRecording,
                         onSizeChanged = { size ->
                             panelSize = size
                             updatePanelOffset(panelOffset)
@@ -167,10 +199,6 @@ class FloatingWindowService : LifecycleService() {
                         onDrag = { drag ->
                             val desired = IntOffset(panelOffset.x + drag.x, panelOffset.y + drag.y)
                             updatePanelOffset(desired)
-                        },
-                        onAddPoint = {
-                            AutoClickCoordinator.addPoint()
-                            Toast.makeText(this@FloatingWindowService, "已添加点击点", Toast.LENGTH_SHORT).show()
                         },
                         onToggleRun = {
                             val changed = when (runtime.state) {
@@ -185,7 +213,32 @@ class FloatingWindowService : LifecycleService() {
                                 ).show()
                             }
                         },
+                        onToggleRecord = {
+                            val changed = if (recording.isRecording) {
+                                AutoClickCoordinator.stopRecording()
+                            } else {
+                                AutoClickCoordinator.startRecording()
+                            }
+                            if (!changed) {
+                                Toast.makeText(this@FloatingWindowService, "当前状态无法切换录制", Toast.LENGTH_SHORT).show()
+                            }
+                        },
+                        onAddAction = {
+                            showAddActionDialog()
+                        },
+                        onDeleteLatest = {
+                            val removed = AutoClickCoordinator.removeLatestPoint()
+                            val tip = if (removed == null) {
+                                "没有可删除的动作"
+                            } else {
+                                "已删除最新动作：${removed.actionType.displayName}"
+                            }
+                            Toast.makeText(this@FloatingWindowService, tip, Toast.LENGTH_SHORT).show()
+                        },
                         onSave = {
+                            if (recording.isRecording) {
+                                AutoClickCoordinator.stopRecording()
+                            }
                             val result = AutoClickCoordinator.saveProfile()
                             val tip = if (result.isSuccess) {
                                 "自动点击配置已保存"
@@ -193,6 +246,13 @@ class FloatingWindowService : LifecycleService() {
                                 "保存失败：${result.exceptionOrNull()?.message}"
                             }
                             Toast.makeText(this@FloatingWindowService, tip, Toast.LENGTH_SHORT).show()
+                        },
+                        onEditPoint = { point ->
+                            showPointEditDialog(point)
+                        },
+                        onDeletePoint = { point ->
+                            AutoClickCoordinator.removePoint(point.id)
+                            Toast.makeText(this@FloatingWindowService, "已删除动作 #${point.id}", Toast.LENGTH_SHORT).show()
                         },
                         onClose = { stopSelf() }
                     )
@@ -247,7 +307,7 @@ class FloatingWindowService : LifecycleService() {
                     val point = profile.points.firstOrNull { it.id == pointId }
                     if (point != null && index >= 0) {
                         TargetBubble(
-                            label = (index + 1).toString(),
+                            label = "${index + 1}.${point.actionType.displayName}",
                             onDrag = { drag ->
                                 if (drag.x != 0 || drag.y != 0) {
                                     val currentPoint = AutoClickCoordinator.profile.value.points
@@ -352,15 +412,23 @@ class FloatingWindowService : LifecycleService() {
 
         val xInput = createNumberInput(latestPoint.x)
         val yInput = createNumberInput(latestPoint.y)
+        val endXInput = createNumberInput(latestPoint.endX ?: latestPoint.x + 200)
+        val endYInput = createNumberInput(latestPoint.endY ?: latestPoint.y)
         val delayInput = createNumberInput(latestPoint.delayMs.toInt())
         val touchInput = createNumberInput(latestPoint.touchDurationMs.toInt())
         val repeatInput = createNumberInput(latestPoint.repeatCount)
+        val isSwipeAction = latestPoint.actionType == AutoClickActionType.Swipe
 
         val container = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             setPadding(40, 30, 40, 10)
+            addView(buildField("动作类型", createReadOnlyInput(latestPoint.actionType.displayName)))
             addView(buildField("X 中心坐标", xInput))
             addView(buildField("Y 中心坐标", yInput))
+            if (isSwipeAction) {
+                addView(buildField("滑动结束X", endXInput))
+                addView(buildField("滑动结束Y", endYInput))
+            }
             addView(buildField("点击延迟(ms)", delayInput))
             addView(buildField("触摸时长(ms)", touchInput))
             addView(buildField("重复次数", repeatInput))
@@ -376,21 +444,36 @@ class FloatingWindowService : LifecycleService() {
                     ?: point
                 val x = xInput.text.toString().toIntOrNull() ?: currentPoint.x
                 val y = yInput.text.toString().toIntOrNull() ?: currentPoint.y
+                val actionType = currentPoint.actionType
+                val endX = if (actionType == AutoClickActionType.Swipe) endXInput.text.toString().toIntOrNull() else null
+                val endY = if (actionType == AutoClickActionType.Swipe) endYInput.text.toString().toIntOrNull() else null
                 val delayMs = xInputToLong(delayInput, currentPoint.delayMs, min = 0L)
                 val touchMs = xInputToLong(touchInput, currentPoint.touchDurationMs, min = 1L)
                 val repeat = repeatInput.text.toString().toIntOrNull()?.coerceAtLeast(1) ?: currentPoint.repeatCount
                 val bounded = clampPointCenter(IntOffset(x, y))
+                val boundedEnd = if (actionType == AutoClickActionType.Swipe) {
+                    val rawEnd = IntOffset(
+                        (endX ?: currentPoint.endX ?: (bounded.x + 200)).coerceAtLeast(0),
+                        (endY ?: currentPoint.endY ?: bounded.y).coerceAtLeast(0)
+                    )
+                    clampPointCenter(rawEnd)
+                } else {
+                    null
+                }
 
                 AutoClickCoordinator.updatePointConfig(
                     pointId = point.id,
                     x = bounded.x,
                     y = bounded.y,
+                    actionType = actionType,
+                    endX = boundedEnd?.x,
+                    endY = boundedEnd?.y,
                     delayMs = delayMs,
                     touchDurationMs = touchMs,
                     repeatCount = repeat
                 )
                 AutoClickCoordinator.saveProfile()
-                Toast.makeText(this, "点击点 #${point.id} 已更新", Toast.LENGTH_SHORT).show()
+                Toast.makeText(this, "动作 #${point.id} 已更新", Toast.LENGTH_SHORT).show()
             }
             .create()
 
@@ -432,6 +515,94 @@ class FloatingWindowService : LifecycleService() {
         }
     }
 
+    private fun createReadOnlyInput(value: String): EditText {
+        return EditText(this).apply {
+            setText(value)
+            isEnabled = false
+            setTextColor(0xFF455A64.toInt())
+            background = null
+            isFocusable = false
+            isClickable = false
+        }
+    }
+
+    private fun showAddActionDialog() {
+        val labels = arrayOf("点击", "滑动")
+        val dialog = AlertDialog.Builder(this)
+            .setTitle("添加动作")
+            .setItems(labels) { _, which ->
+                val type = when (which) {
+                    1 -> AutoClickActionType.Swipe
+                    else -> AutoClickActionType.Click
+                }
+                val point = AutoClickCoordinator.addAction(type)
+                Toast.makeText(this, "已添加：${type.displayName} #${point.id}", Toast.LENGTH_SHORT).show()
+            }
+            .setNegativeButton("取消", null)
+            .create()
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            dialog.window?.setType(WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY)
+        } else {
+            @Suppress("DEPRECATION")
+            dialog.window?.setType(WindowManager.LayoutParams.TYPE_PHONE)
+        }
+        dialog.show()
+    }
+
+    private fun createRecordCaptureOverlay() {
+        if (recordCaptureView != null) return
+        val view = createComposeView().apply {
+            setContent {
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .pointerInput(Unit) {
+                            detectTapGestures { offset ->
+                                val point = AutoClickCoordinator.addRecordedTap(
+                                    x = offset.x.roundToInt(),
+                                    y = offset.y.roundToInt()
+                                )
+                                if (point != null) {
+                                    Toast.makeText(
+                                        this@FloatingWindowService,
+                                        "已录制 ${AutoClickCoordinator.recording.value.recordedCount}.${point.actionType.displayName}",
+                                        Toast.LENGTH_SHORT
+                                    ).show()
+                                }
+                            }
+                        }
+                )
+            }
+        }
+
+        val params = createLayoutParams(
+            width = WindowManager.LayoutParams.MATCH_PARENT,
+            height = WindowManager.LayoutParams.MATCH_PARENT
+        ).apply {
+            x = 0
+            y = 0
+            flags = flags or WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE
+        }
+        windowManager.addView(view, params)
+        recordCaptureView = view
+        recordCaptureLayoutParams = params
+    }
+
+    private fun setRecordCaptureTouchable(touchable: Boolean) {
+        val view = recordCaptureView ?: return
+        val params = recordCaptureLayoutParams ?: return
+        val touchableFlag = WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE
+        val hasFlag = (params.flags and touchableFlag) != 0
+        val needFlag = !touchable
+        if (hasFlag == needFlag) return
+        params.flags = if (needFlag) {
+            params.flags or touchableFlag
+        } else {
+            params.flags and touchableFlag.inv()
+        }
+        runCatching { windowManager.updateViewLayout(view, params) }
+    }
+
     private fun createLayoutParams(width: Int, height: Int): WindowManager.LayoutParams {
         val type = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY
@@ -464,15 +635,22 @@ class FloatingWindowService : LifecycleService() {
         profileCollectJob = null
         runtimeCollectJob?.cancel()
         runtimeCollectJob = null
+        recordingCollectJob?.cancel()
+        recordingCollectJob = null
 
         panelView?.let { runCatching { windowManager.removeView(it) } }
         panelView = null
         panelLayoutParams = null
 
+        recordCaptureView?.let { runCatching { windowManager.removeView(it) } }
+        recordCaptureView = null
+        recordCaptureLayoutParams = null
+
         pointViews.values.forEach { overlay ->
             runCatching { windowManager.removeView(overlay.view) }
         }
         pointViews.clear()
+        AutoClickCoordinator.stopRecording()
         _overlayVisible.value = false
     }
 
@@ -548,13 +726,24 @@ private data class PointOverlay(
 private fun FloatingPanel(
     runState: AutoClickRunState,
     runMessage: String?,
+    points: List<AutoClickPoint>,
+    isRecording: Boolean,
     onSizeChanged: (IntSize) -> Unit,
     onDrag: (IntOffset) -> Unit,
-    onAddPoint: () -> Unit,
     onToggleRun: () -> Unit,
+    onToggleRecord: () -> Unit,
+    onAddAction: () -> Unit,
+    onDeleteLatest: () -> Unit,
     onSave: () -> Unit,
+    onEditPoint: (AutoClickPoint) -> Unit,
+    onDeletePoint: (AutoClickPoint) -> Unit,
     onClose: () -> Unit,
 ) {
+    val actionSummary = if (points.isEmpty()) {
+        "暂无动作"
+    } else {
+        points.mapIndexed { index, point -> "${index + 1}.${point.actionType.displayName}" }.joinToString("，")
+    }
     Card(
         modifier = Modifier
             .onSizeChanged(onSizeChanged)
@@ -578,38 +767,81 @@ private fun FloatingPanel(
                 style = MaterialTheme.typography.bodySmall
             )
             Text(
-                text = "拖动面板/点击点可定位；长按点击点可编辑",
+                text = actionSummary,
                 color = Color(0xFF607D8B),
                 style = MaterialTheme.typography.bodySmall
             )
-            PanelActionButton(
-                icon = Icons.Filled.AddCircleOutline,
-                contentDescription = "添加点击点",
-                onClick = onAddPoint
-            )
-            PanelActionButton(
-                icon = if (runState == AutoClickRunState.Running || runState == AutoClickRunState.Paused) {
-                    Icons.Filled.Stop
-                } else {
-                    Icons.Filled.PlayArrow
-                },
-                contentDescription = if (runState == AutoClickRunState.Running || runState == AutoClickRunState.Paused) {
-                    "停止"
-                } else {
-                    "开始"
-                },
-                onClick = onToggleRun
-            )
-            PanelActionButton(
-                icon = Icons.Filled.Save,
-                contentDescription = "保存",
-                onClick = onSave
-            )
-            PanelActionButton(
-                icon = Icons.Filled.Close,
-                contentDescription = "关闭",
-                onClick = onClose
-            )
+            Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                Column(
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    PanelActionButton(
+                        icon = if (runState == AutoClickRunState.Running || runState == AutoClickRunState.Paused) {
+                            Icons.Filled.Stop
+                        } else {
+                            Icons.Filled.PlayArrow
+                        },
+                        contentDescription = if (runState == AutoClickRunState.Running || runState == AutoClickRunState.Paused) {
+                            "运行中，点击停止"
+                        } else {
+                            "运行"
+                        },
+                        onClick = onToggleRun
+                    )
+                    PanelActionButton(
+                        icon = if (isRecording) Icons.Filled.Stop else Icons.Filled.FiberManualRecord,
+                        contentDescription = if (isRecording) "停止录制" else "录制",
+                        onClick = onToggleRecord
+                    )
+                    PanelActionButton(
+                        icon = Icons.Filled.Add,
+                        contentDescription = "添加动作",
+                        onClick = onAddAction
+                    )
+                    PanelActionButton(
+                        icon = Icons.Filled.Delete,
+                        contentDescription = "删除最新动作",
+                        onClick = onDeleteLatest
+                    )
+                    PanelActionButton(
+                        icon = Icons.Filled.Save,
+                        contentDescription = "保存",
+                        onClick = onSave
+                    )
+                    PanelActionButton(
+                        icon = Icons.Filled.Close,
+                        contentDescription = "关闭",
+                        onClick = onClose
+                    )
+                }
+
+                Column(
+                    modifier = Modifier.width(220.dp),
+                    verticalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
+                    Text(
+                        text = "动作列表（与画圈标签一致）",
+                        color = Color(0xFF37474F),
+                        style = MaterialTheme.typography.bodySmall
+                    )
+                    if (points.isEmpty()) {
+                        Text(
+                            text = "暂无动作，点击左侧“添加”或“录制”开始",
+                            color = Color(0xFF78909C),
+                            style = MaterialTheme.typography.bodySmall
+                        )
+                    } else {
+                        points.forEachIndexed { index, point ->
+                            ActionItemRow(
+                                label = "${index + 1}.${point.actionType.displayName}",
+                                actionType = point.actionType,
+                                onEdit = { onEditPoint(point) },
+                                onDelete = { onDeletePoint(point) }
+                            )
+                        }
+                    }
+                }
+            }
         }
     }
 }
@@ -624,7 +856,7 @@ private fun TargetBubble(
 ) {
     Box(
         modifier = Modifier
-            .size(64.dp)
+            .size(76.dp)
             .pointerInput(Unit) {
                 detectTapGestures(onLongPress = { onLongPress() })
             }
@@ -640,12 +872,16 @@ private fun TargetBubble(
         Box(
             modifier = Modifier
                 .align(Alignment.Center)
-                .size(56.dp)
+                .size(68.dp)
                 .background(Color(0xCC1976D2), CircleShape)
                 .border(2.dp, Color.White, CircleShape),
             contentAlignment = Alignment.Center
         ) {
-            Text(text = label, color = Color.White, style = MaterialTheme.typography.titleMedium)
+            Text(
+                text = label,
+                color = Color.White,
+                style = MaterialTheme.typography.bodySmall
+            )
         }
         Box(
             modifier = Modifier
@@ -657,6 +893,51 @@ private fun TargetBubble(
             contentAlignment = Alignment.Center
         ) {
             Text("x", color = Color.White)
+        }
+    }
+}
+
+@Composable
+private fun ActionItemRow(
+    label: String,
+    actionType: AutoClickActionType,
+    onEdit: () -> Unit,
+    onDelete: () -> Unit,
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .background(Color(0xFFF7FAFC), RoundedCornerShape(10.dp))
+            .padding(horizontal = 8.dp, vertical = 6.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.SpaceBetween
+    ) {
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(6.dp)
+        ) {
+            Icon(
+                imageVector = if (actionType == AutoClickActionType.Click) {
+                    Icons.Filled.AddCircleOutline
+                } else {
+                    Icons.Filled.PlayArrow
+                },
+                contentDescription = null,
+                tint = Color(0xFF455A64)
+            )
+            Text(
+                text = label,
+                style = MaterialTheme.typography.bodySmall,
+                color = Color(0xFF263238)
+            )
+        }
+        Row(horizontalArrangement = Arrangement.spacedBy(2.dp)) {
+            IconButton(onClick = onEdit, modifier = Modifier.size(28.dp)) {
+                Icon(Icons.Filled.Edit, contentDescription = "编辑", tint = Color(0xFF1976D2))
+            }
+            IconButton(onClick = onDelete, modifier = Modifier.size(28.dp)) {
+                Icon(Icons.Filled.Delete, contentDescription = "删除", tint = Color(0xFFB00020))
+            }
         }
     }
 }

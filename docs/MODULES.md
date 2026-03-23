@@ -52,6 +52,8 @@
     - `app/src/main/java/com/example/littleclicker/autoclick/AutoClickRepository.kt`
   - 核心模型：
     - `AutoClickPoint`
+      - 新增动作类型：`Click` / `Swipe`
+      - 滑动动作支持终点坐标：`endX` / `endY`
     - `AutoClickProfile`
     - `ScriptDraft`
     - `AutoClickRunState`
@@ -72,7 +74,7 @@
 - 作用：执行自动点击手势队列，并支持并发保护与暂停/继续/停止。
 - 实现方法：
   - 文件：`app/src/main/java/com/example/littleclicker/service/AutoClickAccessibilityService.kt`
-  - 执行方式：`dispatchGesture` + 单点点击手势。
+  - 执行方式：`dispatchGesture` + 单点点击/滑动手势。
   - 队列规则：按点位顺序、每点重复、全局循环展开执行。
   - 生命周期：服务连接后注册实例；销毁时释放任务与协程。
 
@@ -81,7 +83,10 @@
 - 实现方法：
   - 文件：`app/src/main/java/com/example/littleclicker/service/FloatingWindowService.kt`
   - 渲染：`WindowManager + ComposeView`。
-  - 面板按钮：添加点位、开始/暂停、保存、关闭。
+  - 面板按钮顺序：运行、录制/停止录制、添加动作、删除最新动作、保存、关闭。
+  - 录制能力：录制开启后采集屏幕点击并转为动作，停止录制后保留结果。
+  - 动作展示：面板列表与画圈标签统一显示 `序号.动作类型`（如 `1.点击`、`2.滑动`）。
+  - 动作编辑：列表内支持铅笔图标编辑、垃圾桶图标删除。
   - 拖动能力：面板拖动与点位拖动均支持边界约束，避免移动到屏幕外。
   - 点位编辑：长按点位弹出编辑窗口，支持调整坐标、延迟、触摸时长、重复次数。
   - 点位：支持多点拖拽、删除，顺序按添加顺序稳定显示。

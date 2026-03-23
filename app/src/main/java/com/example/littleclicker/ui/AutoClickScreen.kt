@@ -39,6 +39,7 @@ import androidx.navigationevent.compose.rememberNavigationEventDispatcherOwner
 import com.example.littleclicker.ConfigManageActivity
 import com.example.littleclicker.autoclick.AutoClickCoordinator
 import com.example.littleclicker.autoclick.AutoClickRunMode
+import com.example.littleclicker.autoclick.displayName
 import com.example.littleclicker.service.FloatingWindowService
 import top.yukonga.miuix.kmp.basic.Button
 import top.yukonga.miuix.kmp.basic.Card
@@ -347,6 +348,10 @@ internal fun AutoClickScreen(innerPadding: PaddingValues) {
                         verticalArrangement = Arrangement.spacedBy(6.dp)
                     ) {
                         Text("点击点 #${point.id}", fontWeight = FontWeight.SemiBold)
+                        Text(
+                            text = "动作类型：${point.actionType.displayName}",
+                            color = MiuixTheme.colorScheme.onBackgroundVariant
+                        )
                         Text(
                             text = "中心坐标：(${point.x}, ${point.y})",
                             color = MiuixTheme.colorScheme.onBackgroundVariant
