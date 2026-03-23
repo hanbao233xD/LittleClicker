@@ -134,16 +134,27 @@ internal fun AutoClickScreen(innerPadding: PaddingValues) {
 
         item {
             if (pendingStatuses.isNotEmpty()) {
+                Text(
+                    text = "权限设置",
+                    fontWeight = FontWeight.Bold
+                )
+                Spacer(modifier = Modifier.height(6.dp))
                 Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                     pendingStatuses.forEach { status ->
                         PermissionCard(status = status)
                     }
                 }
             } else {
-                Text(
-                    text = "权限已就绪，授权提示已自动隐藏。",
-                    color = Color(0xFF1F8B4C)
-                )
+                Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    Text(
+                        text = "权限设置",
+                        fontWeight = FontWeight.Bold
+                    )
+                    Text(
+                        text = "权限已就绪，授权提示已自动隐藏。",
+                        color = Color(0xFF1F8B4C)
+                    )
+                }
             }
         }
 
@@ -162,18 +173,52 @@ internal fun AutoClickScreen(innerPadding: PaddingValues) {
                         .padding(14.dp),
                     verticalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
-                    Text("当前配置")
+                    Text("悬浮窗与运行方式")
                     Text(
-                        text = "${profile.name}（循环 ${profile.cycleCount} 次）",
+                        text = "状态：${runtime.state} ${runtime.message ?: ""}",
                         color = MiuixTheme.colorScheme.onBackgroundVariant
                     )
-                    Button(
-                        onClick = {
-                            context.startActivity(Intent(context, ConfigManageActivity::class.java))
+                    SuperSwitch(
+                        checked = overlayEnabled,
+                        onCheckedChange = { shouldEnable ->
+                            if (shouldEnable) {
+                                if (!Settings.canDrawOverlays(context)) {
+                                    openOverlaySettings(context)
+                                    Toast.makeText(context, "请先授予悬浮窗权限", Toast.LENGTH_SHORT).show()
+                                    return@SuperSwitch
+                                }
+                                FloatingWindowService.startAutoClickOverlay(context)
+                                Toast.makeText(context, "自动点击悬浮窗已启动", Toast.LENGTH_SHORT).show()
+                            } else {
+                                FloatingWindowService.stopAutoClickOverlay(context)
+                                Toast.makeText(context, "自动点击悬浮窗已关闭", Toast.LENGTH_SHORT).show()
+                            }
                         },
-                        modifier = Modifier.fillMaxWidth()
-                    ) {
-                        Text("配置管理")
+                        title = "悬浮窗开关",
+                        summary = "自动点击的开始/停止请在悬浮窗中操作"
+                    )
+                    val navigationEventOwner = rememberNavigationEventDispatcherOwner(parent = null)
+                    CompositionLocalProvider(LocalNavigationEventDispatcherOwner provides navigationEventOwner) {
+                        WindowDropdown(
+                            items = runModeItems,
+                            selectedIndex = selectedRunModeIndex,
+                            title = "运行方式",
+                            summary = "运行方式将保存到当前配置",
+                            onSelectedIndexChange = { index ->
+                                val mode = if (index == 0) {
+                                    AutoClickRunMode.RunOnce
+                                } else {
+                                    AutoClickRunMode.LoopUntilStopped
+                                }
+                                AutoClickCoordinator.updateRunMode(mode)
+                            }
+                        )
+                    }
+                    if (!allGranted) {
+                        Text(
+                            text = "提示：建议先完成全部权限授权，再进行自动点击。",
+                            color = MiuixTheme.colorScheme.onBackgroundVariant
+                        )
                     }
                 }
             }
@@ -248,52 +293,18 @@ internal fun AutoClickScreen(innerPadding: PaddingValues) {
                         .padding(14.dp),
                     verticalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
-                    Text("悬浮窗与运行方式")
+                    Text("配置管理")
                     Text(
-                        text = "状态：${runtime.state} ${runtime.message ?: ""}",
+                        text = "${profile.name}（循环 ${profile.cycleCount} 次）",
                         color = MiuixTheme.colorScheme.onBackgroundVariant
                     )
-                    SuperSwitch(
-                        checked = overlayEnabled,
-                        onCheckedChange = { shouldEnable ->
-                            if (shouldEnable) {
-                                if (!Settings.canDrawOverlays(context)) {
-                                    openOverlaySettings(context)
-                                    Toast.makeText(context, "请先授予悬浮窗权限", Toast.LENGTH_SHORT).show()
-                                    return@SuperSwitch
-                                }
-                                FloatingWindowService.startAutoClickOverlay(context)
-                                Toast.makeText(context, "自动点击悬浮窗已启动", Toast.LENGTH_SHORT).show()
-                            } else {
-                                FloatingWindowService.stopAutoClickOverlay(context)
-                                Toast.makeText(context, "自动点击悬浮窗已关闭", Toast.LENGTH_SHORT).show()
-                            }
+                    Button(
+                        onClick = {
+                            context.startActivity(Intent(context, ConfigManageActivity::class.java))
                         },
-                        title = "悬浮窗开关",
-                        summary = "自动点击的开始/停止请在悬浮窗中操作"
-                    )
-                    val navigationEventOwner = rememberNavigationEventDispatcherOwner(parent = null)
-                    CompositionLocalProvider(LocalNavigationEventDispatcherOwner provides navigationEventOwner) {
-                        WindowDropdown(
-                            items = runModeItems,
-                            selectedIndex = selectedRunModeIndex,
-                            title = "运行方式",
-                            summary = "运行方式将保存到当前配置",
-                            onSelectedIndexChange = { index ->
-                                val mode = if (index == 0) {
-                                    AutoClickRunMode.RunOnce
-                                } else {
-                                    AutoClickRunMode.LoopUntilStopped
-                                }
-                                AutoClickCoordinator.updateRunMode(mode)
-                            }
-                        )
-                    }
-                    if (!allGranted) {
-                        Text(
-                            text = "提示：建议先完成全部权限授权，再进行自动点击。",
-                            color = MiuixTheme.colorScheme.onBackgroundVariant
-                        )
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Text("打开配置管理")
                     }
                 }
             }

@@ -5,11 +5,10 @@ import android.accessibilityservice.GestureDescription
 import android.graphics.Path
 import android.view.accessibility.AccessibilityEvent
 import com.example.littleclicker.autoclick.AutoClickCoordinator
+import com.example.littleclicker.autoclick.AutoClickPoint
 import com.example.littleclicker.autoclick.AutoClickProfile
 import com.example.littleclicker.autoclick.AutoClickRunMode
 import com.example.littleclicker.autoclick.AutoClickRunState
-import com.example.littleclicker.autoclick.AutoClickStep
-import com.example.littleclicker.autoclick.expandExecutionSteps
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -138,38 +137,49 @@ class AutoClickAccessibilityService : AccessibilityService() {
     }
 
     private suspend fun executeProfile(profile: AutoClickProfile) {
-        val steps = profile.expandExecutionSteps()
-        if (steps.isEmpty()) {
+        if (profile.points.isEmpty()) {
             throw IllegalStateException("没有可执行的点击步骤")
         }
 
+        val safeCycles = profile.cycleCount.coerceAtLeast(1)
         when (profile.runMode) {
-            AutoClickRunMode.RunOnce -> executeStepsOnce(steps)
+            AutoClickRunMode.RunOnce -> {
+                repeat(safeCycles) {
+                    executePointSequence(profile.points)
+                }
+            }
             AutoClickRunMode.LoopUntilStopped -> {
                 while (currentCoroutineContext().isActive) {
-                    executeStepsOnce(steps)
+                    repeat(safeCycles) {
+                        executePointSequence(profile.points)
+                    }
                 }
             }
         }
     }
 
-    private suspend fun executeStepsOnce(steps: List<AutoClickStep>) {
-        for (step in steps) {
-            ensureNotCancelled()
-            waitIfPaused()
-            if (step.delayMs > 0) {
-                delay(step.delayMs)
-            }
-            ensureNotCancelled()
-            waitIfPaused()
+    private suspend fun executePointSequence(points: List<AutoClickPoint>) {
+        for (point in points) {
+            val safeRepeatCount = point.repeatCount.coerceAtLeast(1)
+            repeat(safeRepeatCount) {
+                ensureNotCancelled()
+                waitIfPaused()
 
-            val dispatched = dispatchSingleTap(
-                x = step.x,
-                y = step.y,
-                durationMs = step.touchDurationMs
-            )
-            if (!dispatched) {
-                throw IllegalStateException("点击手势派发失败")
+                val dispatched = dispatchSingleTap(
+                    x = point.x,
+                    y = point.y,
+                    durationMs = point.touchDurationMs.coerceAtLeast(1L)
+                )
+                if (!dispatched) {
+                    throw IllegalStateException("点击手势派发失败")
+                }
+
+                ensureNotCancelled()
+                waitIfPaused()
+                val delayMs = point.delayMs.coerceAtLeast(0L)
+                if (delayMs > 0) {
+                    delay(delayMs)
+                }
             }
         }
     }

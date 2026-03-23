@@ -15,6 +15,7 @@ object AutoClickRepository {
     private const val LEGACY_PROFILE_FILE = "profile.json"
     private const val SCRIPT_DIR = "scripts"
     private const val DEFAULT_PROFILE_ID = "default"
+    private const val DEFAULT_PROFILE_NAME = "点击配置_1"
 
     private data class AutoClickStorageState(
         val activeProfileId: String? = null,
@@ -27,7 +28,7 @@ object AutoClickRepository {
         if (profiles.isEmpty()) {
             val created = AutoClickProfile(
                 id = DEFAULT_PROFILE_ID,
-                name = "默认自动点击配置",
+                name = DEFAULT_PROFILE_NAME,
                 points = emptyList(),
                 cycleCount = 1,
                 startAtMillis = null,
@@ -80,6 +81,12 @@ object AutoClickRepository {
         if (makeActive) {
             saveStorageState(context, AutoClickStorageState(activeProfileId = normalized.id))
         }
+    }
+
+    fun deleteProfile(context: Context, profileId: String): Boolean {
+        val file = profileFile(context, profileId)
+        if (!file.exists()) return false
+        return runCatching { file.delete() }.getOrDefault(false)
     }
 
     fun getActiveProfileId(context: Context): String? {

@@ -47,6 +47,7 @@ internal fun ConfigManageScreen(onBack: () -> Unit) {
     val profile by AutoClickCoordinator.profile.collectAsState()
     val profiles by AutoClickCoordinator.profiles.collectAsState()
     var saveAsName by remember { mutableStateOf("") }
+    var pendingDeleteId by remember { mutableStateOf<String?>(null) }
 
     DisposableEffect(lifecycleOwner) {
         val observer = LifecycleEventObserver { _, event ->
@@ -161,12 +162,11 @@ internal fun ConfigManageScreen(onBack: () -> Unit) {
                         onValueChange = { saveAsName = it },
                         modifier = Modifier.fillMaxWidth(),
                         singleLine = true,
-                        label = { M3Text("新配置名称") }
+                        label = { M3Text("新配置名称（留空自动编号）") }
                     )
                     Button(
                         onClick = {
-                            val inputName = saveAsName.ifBlank { "${profile.name}_副本" }
-                            val result = AutoClickCoordinator.saveAsNewProfile(inputName)
+                            val result = AutoClickCoordinator.saveAsNewProfile(saveAsName)
                             result.onSuccess { saved ->
                                 saveAsName = saved.name
                                 Toast.makeText(context, "已另存为：${saved.name}", Toast.LENGTH_SHORT).show()
@@ -238,18 +238,46 @@ internal fun ConfigManageScreen(onBack: () -> Unit) {
                                 text = if (isActive) "当前使用中" else "未加载",
                                 color = if (isActive) Color(0xFF1F8B4C) else MiuixTheme.colorScheme.onBackgroundVariant
                             )
-                            Button(
-                                onClick = {
-                                    val result = AutoClickCoordinator.loadProfile(item.id)
-                                    result.onSuccess {
-                                        Toast.makeText(context, "已加载配置：${it.name}", Toast.LENGTH_SHORT).show()
-                                    }.onFailure {
-                                        Toast.makeText(context, it.message ?: "加载失败", Toast.LENGTH_SHORT).show()
+                            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                Button(
+                                    onClick = {
+                                        val result = AutoClickCoordinator.loadProfile(item.id)
+                                        result.onSuccess {
+                                            pendingDeleteId = null
+                                            Toast.makeText(context, "已加载配置：${it.name}", Toast.LENGTH_SHORT).show()
+                                        }.onFailure {
+                                            Toast.makeText(context, it.message ?: "加载失败", Toast.LENGTH_SHORT).show()
+                                        }
+                                    },
+                                    enabled = !isActive
+                                ) {
+                                    Text("加载")
+                                }
+                                val isPendingDelete = pendingDeleteId == item.id
+                                Button(
+                                    onClick = {
+                                        if (!isPendingDelete) {
+                                            pendingDeleteId = item.id
+                                            Toast.makeText(context, "再次点击删除可确认", Toast.LENGTH_SHORT).show()
+                                            return@Button
+                                        }
+
+                                        val result = AutoClickCoordinator.deleteProfile(item.id)
+                                        result.onSuccess { activeAfterDelete ->
+                                            pendingDeleteId = null
+                                            Toast.makeText(
+                                                context,
+                                                "已删除，当前配置：${activeAfterDelete.name}",
+                                                Toast.LENGTH_SHORT
+                                            ).show()
+                                        }.onFailure {
+                                            pendingDeleteId = null
+                                            Toast.makeText(context, it.message ?: "删除失败", Toast.LENGTH_SHORT).show()
+                                        }
                                     }
-                                },
-                                enabled = !isActive
-                            ) {
-                                Text("加载")
+                                ) {
+                                    Text(if (isPendingDelete) "确认删除" else "删除")
+                                }
                             }
                         }
                     }

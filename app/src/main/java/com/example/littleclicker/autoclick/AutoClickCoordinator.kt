@@ -15,6 +15,8 @@ import kotlinx.coroutines.launch
 
 object AutoClickCoordinator {
 
+    private const val AUTO_NAME_PREFIX = "点击配置_"
+
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
 
     private var appContext: Context? = null
@@ -72,9 +74,10 @@ object AutoClickCoordinator {
         val context = appContext ?: return Result.failure(IllegalStateException("Coordinator not initialized"))
         val base = _profile.value
         val now = System.currentTimeMillis()
+        val currentProfiles = AutoClickRepository.listProfiles(context)
         val newProfile = base.copy(
             id = "profile_${now}_${(1000..9999).random()}",
-            name = name.ifBlank { "配置_$now" },
+            name = name.ifBlank { nextDefaultProfileName(currentProfiles) },
             startAtMillis = null,
             updatedAt = now
         )
@@ -88,6 +91,61 @@ object AutoClickCoordinator {
                 message = "已切换到新配置：${newProfile.name}"
             )
             newProfile
+        }
+    }
+
+    fun deleteProfile(profileId: String): Result<AutoClickProfile> {
+        val context = appContext ?: return Result.failure(IllegalStateException("Coordinator not initialized"))
+
+        return runCatching {
+            val deleted = AutoClickRepository.deleteProfile(context, profileId)
+            if (!deleted) {
+                throw IllegalArgumentException("删除失败：配置不存在")
+            }
+
+            val remaining = AutoClickRepository.listProfiles(context)
+            val activeId = AutoClickRepository.getActiveProfileId(context)
+            val isDeletedActive = activeId == null || activeId == profileId || _profile.value.id == profileId
+
+            val nextActive = when {
+                remaining.isEmpty() -> {
+                    val created = AutoClickProfile(
+                        id = "profile_${System.currentTimeMillis()}_${(1000..9999).random()}",
+                        name = nextDefaultProfileName(emptyList()),
+                        points = emptyList(),
+                        cycleCount = 1,
+                        startAtMillis = null,
+                        updatedAt = System.currentTimeMillis()
+                    )
+                    AutoClickRepository.saveProfile(context, created, makeActive = true)
+                    created
+                }
+
+                isDeletedActive -> {
+                    val fallback = remaining.first()
+                    AutoClickRepository.setActiveProfileId(context, fallback.id)
+                    fallback
+                }
+
+                else -> {
+                    AutoClickRepository.loadProfile(context, _profile.value.id)
+                        ?: remaining.first()
+                }
+            }
+
+            if (isDeletedActive) {
+                stop()
+                _profile.value = nextActive
+                restoreScheduleForCurrentProfile()
+            } else {
+                _profile.value = nextActive
+            }
+            refreshProfiles()
+            _runtime.value = AutoClickRuntime(
+                state = AutoClickRunState.Idle,
+                message = "配置已删除，当前配置：${nextActive.name}"
+            )
+            nextActive
         }
     }
 
@@ -288,8 +346,15 @@ object AutoClickCoordinator {
     fun saveProfile(): Result<Unit> {
         val context = appContext ?: return Result.failure(IllegalStateException("Coordinator not initialized"))
         val snapshot = _profile.value
+        val profiles = AutoClickRepository.listProfiles(context)
+        val normalized = if (snapshot.name.isBlank()) {
+            snapshot.copy(name = nextAutoProfileName(profiles))
+        } else {
+            snapshot
+        }
         return runCatching {
-            AutoClickRepository.saveProfile(context, snapshot, makeActive = true)
+            AutoClickRepository.saveProfile(context, normalized, makeActive = true)
+            _profile.value = normalized
             refreshProfiles()
         }
     }
@@ -355,6 +420,14 @@ object AutoClickCoordinator {
     private fun cancelSchedule() {
         scheduleJob?.cancel()
         scheduleJob = null
+    }
+
+    private fun nextDefaultProfileName(profiles: List<AutoClickProfile>): String {
+        return nextAutoProfileName(profiles)
+    }
+
+    private fun nextAutoProfileName(profiles: List<AutoClickProfile>): String {
+        return "$AUTO_NAME_PREFIX${profiles.size + 1}"
     }
 
     private fun updateProfile(transform: (AutoClickProfile) -> AutoClickProfile) {
