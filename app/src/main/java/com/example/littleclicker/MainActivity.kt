@@ -5,7 +5,6 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.List
 import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.runtime.Composable
@@ -21,7 +20,6 @@ import androidx.navigation.compose.rememberNavController
 import com.example.littleclicker.autoclick.AutoClickCoordinator
 import com.example.littleclicker.ui.AboutScreen
 import com.example.littleclicker.ui.AutoClickScreen
-import com.example.littleclicker.ui.ScriptManageScreen
 import top.yukonga.miuix.kmp.basic.NavigationBar
 import top.yukonga.miuix.kmp.basic.NavigationBarItem
 import top.yukonga.miuix.kmp.basic.Scaffold
@@ -43,7 +41,6 @@ class MainActivity : ComponentActivity() {
 
 private enum class MainTab(val route: String, val title: String) {
     AUTO_CLICK("auto_click", "自动点击"),
-    SCRIPTS("scripts", "脚本管理"),
     ABOUT("about", "关于"),
 }
 
@@ -51,7 +48,7 @@ private enum class MainTab(val route: String, val title: String) {
 private fun AppRoot() {
     val navController = rememberNavController()
     val context = LocalContext.current
-    val tabs = listOf(MainTab.AUTO_CLICK, MainTab.SCRIPTS, MainTab.ABOUT)
+    val tabs = listOf(MainTab.AUTO_CLICK, MainTab.ABOUT)
     val navBackStackEntry = navController.currentBackStackEntryAsState()
     val currentDestination = navBackStackEntry.value?.destination
 
@@ -66,7 +63,6 @@ private fun AppRoot() {
                     val selected = currentDestination?.hierarchy?.any { it.route == tab.route } == true
                     val icon = when (tab) {
                         MainTab.AUTO_CLICK -> Icons.Default.Home
-                        MainTab.SCRIPTS -> Icons.AutoMirrored.Filled.List
                         MainTab.ABOUT -> Icons.Default.Info
                     }
                     NavigationBarItem(
@@ -94,9 +90,6 @@ private fun AppRoot() {
         ) {
             composable(MainTab.AUTO_CLICK.route) {
                 AutoClickScreen(innerPadding)
-            }
-            composable(MainTab.SCRIPTS.route) {
-                ScriptManageScreen(innerPadding)
             }
             composable(MainTab.ABOUT.route) {
                 AboutScreen(innerPadding)

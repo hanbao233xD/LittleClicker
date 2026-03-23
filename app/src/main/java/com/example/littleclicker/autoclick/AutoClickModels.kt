@@ -22,14 +22,6 @@ data class AutoClickProfile(
     val updatedAt: Long = System.currentTimeMillis(),
 )
 
-data class ScriptDraft(
-    val id: String,
-    val name: String,
-    val actions: List<String> = emptyList(),
-    val createdAt: Long,
-    val updatedAt: Long,
-)
-
 enum class AutoClickActionType {
     Click,
     Swipe,

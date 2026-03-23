@@ -110,3 +110,16 @@
   - 将 `OverlaySavedStateOwner` 生命周期状态从 `CREATED` 提升为 `RESUMED`，保证悬浮窗 Compose 视图持续可重组。
 - 验证结果：
   - `./gradlew :app:assembleDebug` 通过。
+
+## 2026-03-23（移除脚本管理功能）
+- 导航精简：`MainActivity` 底部导航移除“脚本管理”Tab，保留“自动点击/关于”两页。
+- 页面清理：删除 `ScriptManageScreen.kt`，录制能力统一收敛到自动点击悬浮窗侧栏。
+- 数据层清理：
+  - 删除 `ScriptDraft` 模型；
+  - `AutoClickCoordinator` 删除草稿相关状态与操作接口；
+  - `AutoClickRepository` 删除草稿读写与 `filesDir/scripts` 存储逻辑。
+- 文案调整：自动点击首页提示更新为“录制与运行控制已整合到自动点击悬浮窗”。
+- 单测清理：移除脚本草稿序列化测试，仅保留自动点击配置与执行步骤测试。
+- 验证结果：
+  - `./gradlew :app:assembleDebug` 通过；
+  - `./gradlew :app:testDebugUnitTest` 通过。

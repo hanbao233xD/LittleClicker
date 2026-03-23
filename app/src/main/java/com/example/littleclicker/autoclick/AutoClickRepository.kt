@@ -13,7 +13,6 @@ object AutoClickRepository {
     private const val PROFILE_DIR = "profiles"
     private const val STATE_FILE = "state.json"
     private const val LEGACY_PROFILE_FILE = "profile.json"
-    private const val SCRIPT_DIR = "scripts"
     private const val DEFAULT_PROFILE_ID = "default"
     private const val DEFAULT_PROFILE_NAME = "点击配置_1"
 
@@ -119,45 +118,6 @@ object AutoClickRepository {
         saveStorageState(context, AutoClickStorageState(activeProfileId = profileId))
     }
 
-    fun listDrafts(context: Context): List<ScriptDraft> {
-        val dir = scriptsDir(context)
-        if (!dir.exists()) return emptyList()
-        return dir.listFiles()
-            ?.filter { it.isFile && it.extension.equals("json", ignoreCase = true) }
-            ?.mapNotNull { file ->
-                runCatching { draftFromJson(file.readText()) }.getOrNull()
-            }
-            ?.sortedByDescending { it.updatedAt }
-            ?: emptyList()
-    }
-
-    fun createDraft(context: Context, name: String): ScriptDraft {
-        val now = System.currentTimeMillis()
-        val draft = ScriptDraft(
-            id = "draft_${now}_${(1000..9999).random()}",
-            name = name.ifBlank { "未命名草稿" },
-            actions = emptyList(),
-            createdAt = now,
-            updatedAt = now
-        )
-        saveDraft(context, draft)
-        return draft
-    }
-
-    fun saveDraft(context: Context, draft: ScriptDraft) {
-        val file = draftFile(context, draft.id)
-        file.parentFile?.mkdirs()
-        file.writeText(draftToJson(draft))
-    }
-
-    fun loadDraft(context: Context, draftId: String): ScriptDraft? {
-        val file = draftFile(context, draftId)
-        if (!file.exists()) return null
-        return runCatching {
-            draftFromJson(file.readText())
-        }.getOrNull()
-    }
-
     fun profileToJson(profile: AutoClickProfile): String = gson.toJson(profile)
 
     fun profileFromJson(json: String): AutoClickProfile {
@@ -198,10 +158,6 @@ object AutoClickRepository {
         )
     }
 
-    fun draftToJson(draft: ScriptDraft): String = gson.toJson(draft)
-
-    fun draftFromJson(json: String): ScriptDraft = gson.fromJson(json, ScriptDraft::class.java)
-
     private fun migrateLegacyProfileIfNeeded(context: Context) {
         val legacyFile = File(autoclickDir(context), LEGACY_PROFILE_FILE)
         if (!legacyFile.exists()) return
@@ -235,10 +191,6 @@ object AutoClickRepository {
     }
 
     private fun stateFile(context: Context): File = File(autoclickDir(context), STATE_FILE)
-
-    private fun scriptsDir(context: Context): File = File(context.filesDir, SCRIPT_DIR)
-
-    private fun draftFile(context: Context, draftId: String): File = File(scriptsDir(context), "$draftId.json")
 
     private fun loadStorageState(context: Context): AutoClickStorageState {
         val file = stateFile(context)

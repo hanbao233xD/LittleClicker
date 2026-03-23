@@ -24,10 +24,10 @@
     - `FloatingWindowService`
 
 ## 3. 导航壳模块（MainActivity）
-- 作用：提供三 Tab 导航壳与应用启动入口。
+- 作用：提供主导航壳与应用启动入口。
 - 实现方法：
   - 文件：`app/src/main/java/com/example/littleclicker/MainActivity.kt`
-  - 三个 Tab：`自动点击`、`脚本管理`、`关于`。
+  - 两个 Tab：`自动点击`、`关于`。
   - 默认首页：`自动点击`。
   - 在入口处初始化 `AutoClickCoordinator`，供页面和服务共享状态。
 
@@ -45,7 +45,7 @@
   - 点击点列表：改为只读展示，参数编辑入口迁移至悬浮窗长按弹窗。
 
 ## 5. 自动点击数据模块（Models + Repository）
-- 作用：定义自动点击/脚本草稿数据结构并提供本地 JSON 持久化。
+- 作用：定义自动点击数据结构并提供本地 JSON 持久化。
 - 实现方法：
   - 文件：
     - `app/src/main/java/com/example/littleclicker/autoclick/AutoClickModels.kt`
@@ -55,20 +55,19 @@
       - 新增动作类型：`Click` / `Swipe`
       - 滑动动作支持终点坐标：`endX` / `endY`
     - `AutoClickProfile`
-    - `ScriptDraft`
     - `AutoClickRunState`
-  - 存储位置：`filesDir` 私有目录（`autoclick/profile.json`、`scripts/*.json`）。
+  - 存储位置：`filesDir` 私有目录（`autoclick/profiles/*.json`、`autoclick/state.json`）。
 
 ## 6. 自动点击协调模块（AutoClickCoordinator）
 - 作用：统一页面、悬浮窗、无障碍服务的状态与操作入口。
 - 实现方法：
   - 文件：`app/src/main/java/com/example/littleclicker/autoclick/AutoClickCoordinator.kt`
   - 能力：
-    - 管理 `profile/runtime/scriptDrafts` 的 `StateFlow`
+    - 管理 `profile/profiles/runtime/recording` 的 `StateFlow`
     - 点击点增删拖拽与参数更新
     - 应用内可靠定时（进程存活时到点触发）
     - 启动/暂停/继续/停止执行
-    - 自动点击配置保存、脚本草稿新建/覆盖保存/列表刷新
+    - 自动点击配置保存、加载、删除与列表刷新
 
 ## 7. 无障碍执行模块（AutoClickAccessibilityService）
 - 作用：执行自动点击手势队列，并支持并发保护与暂停/继续/停止。
@@ -92,14 +91,16 @@
   - 点位：支持多点拖拽、删除，顺序按添加顺序稳定显示。
   - 对外入口：`startAutoClickOverlay(context)` / `stopAutoClickOverlay(context)`。
 
-## 9. 脚本草稿管理模块（ScriptManageScreen）
-- 作用：先落地脚本保存能力，不包含动作编辑/执行。
+## 9. 配置管理模块（ConfigManageActivity + ConfigManageScreen）
+- 作用：管理自动点击配置（保存、另存、加载、删除）。
 - 实现方法：
-  - 文件：`app/src/main/java/com/example/littleclicker/ui/ScriptManageScreen.kt`
+  - 文件：
+    - `app/src/main/java/com/example/littleclicker/ConfigManageActivity.kt`
+    - `app/src/main/java/com/example/littleclicker/ui/ConfigManageScreen.kt`
   - 支持：
-    - 新建草稿并保存
-    - 覆盖保存已选草稿
-    - 列表展示与点击加载
+    - 编辑当前配置名称与循环次数
+    - 保存当前配置/另存为新配置
+    - 本地配置列表加载与删除
 
 ## 10. 关于模块（AboutScreen）
 - 作用：展示应用品牌信息和占位入口。

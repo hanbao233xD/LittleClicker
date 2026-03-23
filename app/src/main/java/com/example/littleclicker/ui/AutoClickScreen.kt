@@ -128,7 +128,7 @@ internal fun AutoClickScreen(innerPadding: PaddingValues) {
             )
             Spacer(modifier = Modifier.height(4.dp))
             Text(
-                text = "默认进入自动点击模式。脚本功能已拆分到脚本管理页。",
+                text = "默认进入自动点击模式。录制与运行控制已整合到自动点击悬浮窗。",
                 color = MiuixTheme.colorScheme.onBackgroundVariant
             )
         }

@@ -1,7 +1,6 @@
 package com.example.littleclicker.autoclick
 
 import org.junit.Assert.assertEquals
-import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class AutoClickSerializationTest {
@@ -30,25 +29,6 @@ class AutoClickSerializationTest {
         assertEquals(profile.cycleCount, restored.cycleCount)
         assertEquals(profile.runMode, restored.runMode)
         assertEquals(profile.startAtMillis, restored.startAtMillis)
-    }
-
-    @Test
-    fun scriptDraftSerialization_roundTrip_allowsEmptyActions() {
-        val draft = ScriptDraft(
-            id = "draft_001",
-            name = "空动作草稿",
-            actions = emptyList(),
-            createdAt = 1_735_100_000_000,
-            updatedAt = 1_735_200_000_000
-        )
-
-        val json = AutoClickRepository.draftToJson(draft)
-        val restored = AutoClickRepository.draftFromJson(json)
-
-        assertEquals(draft.id, restored.id)
-        assertEquals(draft.name, restored.name)
-        assertTrue(restored.actions.isEmpty())
-        assertEquals(draft.updatedAt, restored.updatedAt)
     }
 
     @Test

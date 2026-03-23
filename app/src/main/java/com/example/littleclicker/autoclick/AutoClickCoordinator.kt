@@ -35,9 +35,6 @@ object AutoClickCoordinator {
     private val _recording = MutableStateFlow(AutoClickRecordingState())
     val recording: StateFlow<AutoClickRecordingState> = _recording.asStateFlow()
 
-    private val _scriptDrafts = MutableStateFlow<List<ScriptDraft>>(emptyList())
-    val scriptDrafts: StateFlow<List<ScriptDraft>> = _scriptDrafts.asStateFlow()
-
     fun initialize(context: Context) {
         val applicationContext = context.applicationContext
         appContext = applicationContext
@@ -48,7 +45,6 @@ object AutoClickCoordinator {
 
         _profile.value = AutoClickRepository.loadActiveProfile(applicationContext)
         refreshProfiles()
-        refreshScriptDrafts()
         initialized = true
         restoreScheduleForCurrentProfile()
     }
@@ -503,37 +499,6 @@ object AutoClickCoordinator {
             AutoClickRepository.saveProfile(context, normalized, makeActive = true)
             _profile.value = normalized
             refreshProfiles()
-        }
-    }
-
-    fun refreshScriptDrafts() {
-        val context = appContext ?: return
-        _scriptDrafts.value = AutoClickRepository.listDrafts(context)
-    }
-
-    fun createScriptDraft(name: String): Result<ScriptDraft> {
-        val context = appContext ?: return Result.failure(IllegalStateException("Coordinator not initialized"))
-        if (name.isBlank()) {
-            return Result.failure(IllegalArgumentException("脚本名称不能为空"))
-        }
-        return runCatching {
-            AutoClickRepository.createDraft(context, name).also { refreshScriptDrafts() }
-        }
-    }
-
-    fun saveScriptDraft(draftId: String, name: String): Result<ScriptDraft> {
-        val context = appContext ?: return Result.failure(IllegalStateException("Coordinator not initialized"))
-        if (name.isBlank()) {
-            return Result.failure(IllegalArgumentException("脚本名称不能为空"))
-        }
-
-        return runCatching {
-            val existing = AutoClickRepository.loadDraft(context, draftId)
-                ?: throw IllegalArgumentException("找不到指定脚本草稿")
-            val updated = existing.copy(name = name, updatedAt = System.currentTimeMillis())
-            AutoClickRepository.saveDraft(context, updated)
-            refreshScriptDrafts()
-            updated
         }
     }
 
