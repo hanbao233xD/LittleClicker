@@ -130,3 +130,34 @@
   - `AutoClickScreen` 中新增词库读取与随机选择逻辑，权限未齐全时展示 `提示：{随机文案}`。
 - 稳定性兜底：
   - 读取失败、资源为空或全空行时，自动回退到默认文案，避免页面空提示或崩溃。
+
+## 2026-03-23（悬浮窗动作列表滚动）
+- 悬浮窗面板“动作列表”由静态纵向直排改为可滚动列表。
+- 列表容器增加高度上限（`heightIn(max = 220.dp)`）：动作较多时在面板内部滚动，不再继续向下延伸撑高悬浮窗。
+- 验证结果：
+  - `./gradlew assembleDebug` 通过。
+
+## 2026-03-23（手动保存策略 + 配置复制）
+- 调整保存策略：用户编辑动作后不再自动落盘，改为仅更新当前内存状态，需手动点击“保存”才写入配置文件。
+  - 移除点击点拖动结束时的自动 `saveProfile()`；
+  - 移除点击点编辑弹窗“保存”后的自动 `saveProfile()`。
+- 配置管理新增“复制”功能：
+  - 配置列表每项新增“复制”按钮；
+  - 点击后创建同内容新配置，命名为 `原配置名_副本`，并保留当前激活配置不变。
+- 协调器新增复制接口：`AutoClickCoordinator.duplicateProfile(profileId)`。
+- 验证结果：
+  - `./gradlew assembleDebug` 通过。
+  - `./gradlew :app:testDebugUnitTest` 通过。
+  - `adb install -r app/build/outputs/apk/debug/app-debug.apk` 安装成功。
+  - 清空 logcat 后启动 App（`adb shell monkey -p com.example.littleclicker -c android.intent.category.LAUNCHER 1`），未检出 `FATAL EXCEPTION` / `Process: com.example.littleclicker` 崩溃日志。
+
+## 2026-03-23（未保存改动回滚修复）
+- 修复问题：删除/编辑动作后仅关闭悬浮窗，重新打开仍沿用内存改动。
+- 修复方案：
+  - `AutoClickCoordinator` 新增 `discardUnsavedChanges()`，从当前激活配置文件重载数据；
+  - 悬浮窗关闭按钮路径与 `ACTION_STOP` 路径统一调用回滚，确保关闭后恢复到已保存状态。
+- 验证结果：
+  - `./gradlew assembleDebug` 通过。
+  - `./gradlew :app:testDebugUnitTest` 通过。
+  - `adb install -r app/build/outputs/apk/debug/app-debug.apk` 安装成功。
+  - 清空 logcat 后启动 App，未检出 `FATAL EXCEPTION` / `Process: com.example.littleclicker` 崩溃日志。

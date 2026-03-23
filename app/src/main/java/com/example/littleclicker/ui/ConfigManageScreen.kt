@@ -84,7 +84,7 @@ internal fun ConfigManageScreen(onBack: () -> Unit) {
             }
             Spacer(modifier = Modifier.height(4.dp))
             Text(
-                text = "可保存当前配置、另存为新配置，并从本地配置列表中加载。",
+                text = "可保存当前配置、另存为新配置，并从本地配置列表中加载或复制。",
                 color = MiuixTheme.colorScheme.onBackgroundVariant
             )
         }
@@ -252,6 +252,23 @@ internal fun ConfigManageScreen(onBack: () -> Unit) {
                                     enabled = !isActive
                                 ) {
                                     Text("加载")
+                                }
+                                Button(
+                                    onClick = {
+                                        val result = AutoClickCoordinator.duplicateProfile(item.id)
+                                        result.onSuccess { copied ->
+                                            pendingDeleteId = null
+                                            Toast.makeText(
+                                                context,
+                                                "已复制：${copied.name}",
+                                                Toast.LENGTH_SHORT
+                                            ).show()
+                                        }.onFailure {
+                                            Toast.makeText(context, it.message ?: "复制失败", Toast.LENGTH_SHORT).show()
+                                        }
+                                    }
+                                ) {
+                                    Text("复制")
                                 }
                                 val isPendingDelete = pendingDeleteId == item.id
                                 Button(

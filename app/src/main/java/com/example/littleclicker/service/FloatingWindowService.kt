@@ -27,9 +27,12 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -120,6 +123,7 @@ class FloatingWindowService : LifecycleService() {
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         when (intent?.action) {
             ACTION_STOP -> {
+                AutoClickCoordinator.discardUnsavedChanges()
                 stopSelf()
                 return Service.START_NOT_STICKY
             }
@@ -256,7 +260,17 @@ class FloatingWindowService : LifecycleService() {
                             AutoClickCoordinator.removePoint(point.id)
                             Toast.makeText(this@FloatingWindowService, "已删除动作 #${point.id}", Toast.LENGTH_SHORT).show()
                         },
-                        onClose = { stopSelf() }
+                        onClose = {
+                            AutoClickCoordinator.discardUnsavedChanges()
+                                .onFailure {
+                                    Toast.makeText(
+                                        this@FloatingWindowService,
+                                        "未保存改动回滚失败：${it.message}",
+                                        Toast.LENGTH_SHORT
+                                    ).show()
+                                }
+                            stopSelf()
+                        }
                     )
                 }
             }
@@ -328,9 +342,7 @@ class FloatingWindowService : LifecycleService() {
                                     }
                                 }
                             },
-                            onDragEnd = {
-                                AutoClickCoordinator.saveProfile()
-                            },
+                            onDragEnd = {},
                             onLongPress = {
                                 showPointEditDialog(point)
                             },
@@ -474,7 +486,6 @@ class FloatingWindowService : LifecycleService() {
                     touchDurationMs = touchMs,
                     repeatCount = repeat
                 )
-                AutoClickCoordinator.saveProfile()
                 Toast.makeText(this, "动作 #${point.id} 已更新", Toast.LENGTH_SHORT).show()
             }
             .create()
@@ -869,13 +880,23 @@ private fun FloatingPanel(
                             style = MaterialTheme.typography.bodySmall
                         )
                     } else {
-                        points.forEachIndexed { index, point ->
-                            ActionItemRow(
-                                label = "${index + 1}.${point.actionType.displayName}",
-                                actionType = point.actionType,
-                                onEdit = { onEditPoint(point) },
-                                onDelete = { onDeletePoint(point) }
-                            )
+                        LazyColumn(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .heightIn(max = 220.dp),
+                            verticalArrangement = Arrangement.spacedBy(6.dp)
+                        ) {
+                            itemsIndexed(
+                                items = points,
+                                key = { _, point -> point.id }
+                            ) { index, point ->
+                                ActionItemRow(
+                                    label = "${index + 1}.${point.actionType.displayName}",
+                                    actionType = point.actionType,
+                                    onEdit = { onEditPoint(point) },
+                                    onDelete = { onDeletePoint(point) }
+                                )
+                            }
                         }
                     }
                 }

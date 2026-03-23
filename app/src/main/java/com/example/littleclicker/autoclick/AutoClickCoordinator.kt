@@ -75,7 +75,7 @@ object AutoClickCoordinator {
         val now = System.currentTimeMillis()
         val currentProfiles = AutoClickRepository.listProfiles(context)
         val newProfile = base.copy(
-            id = "profile_${now}_${(1000..9999).random()}",
+            id = generateProfileId(now),
             name = name.ifBlank { nextDefaultProfileName(currentProfiles) },
             startAtMillis = null,
             updatedAt = now
@@ -108,13 +108,14 @@ object AutoClickCoordinator {
 
             val nextActive = when {
                 remaining.isEmpty() -> {
+                    val now = System.currentTimeMillis()
                     val created = AutoClickProfile(
-                        id = "profile_${System.currentTimeMillis()}_${(1000..9999).random()}",
+                        id = generateProfileId(now),
                         name = nextDefaultProfileName(emptyList()),
                         points = emptyList(),
                         cycleCount = 1,
                         startAtMillis = null,
-                        updatedAt = System.currentTimeMillis()
+                        updatedAt = now
                     )
                     AutoClickRepository.saveProfile(context, created, makeActive = true)
                     created
@@ -145,6 +146,40 @@ object AutoClickCoordinator {
                 message = "配置已删除，当前配置：${nextActive.name}"
             )
             nextActive
+        }
+    }
+
+    fun duplicateProfile(profileId: String): Result<AutoClickProfile> {
+        val context = appContext ?: return Result.failure(IllegalStateException("Coordinator not initialized"))
+
+        return runCatching {
+            val source = AutoClickRepository.loadProfile(context, profileId)
+                ?: throw IllegalArgumentException("复制失败：找不到指定配置")
+            val now = System.currentTimeMillis()
+            val duplicated = source.copy(
+                id = generateProfileId(now),
+                name = "${source.name}_副本",
+                updatedAt = now
+            )
+            AutoClickRepository.saveProfile(context, duplicated, makeActive = false)
+            refreshProfiles()
+            duplicated
+        }
+    }
+
+    fun discardUnsavedChanges(): Result<AutoClickProfile> {
+        val context = appContext ?: return Result.failure(IllegalStateException("Coordinator not initialized"))
+
+        return runCatching {
+            val activeId = AutoClickRepository.getActiveProfileId(context)
+            val restored = if (!activeId.isNullOrBlank()) {
+                AutoClickRepository.loadProfile(context, activeId)
+            } else {
+                null
+            } ?: AutoClickRepository.loadActiveProfile(context)
+            _profile.value = restored
+            refreshProfiles()
+            restored
         }
     }
 
@@ -540,6 +575,10 @@ object AutoClickCoordinator {
 
     private fun nextAutoProfileName(profiles: List<AutoClickProfile>): String {
         return "$AUTO_NAME_PREFIX${profiles.size + 1}"
+    }
+
+    private fun generateProfileId(timestampMillis: Long): String {
+        return "profile_${timestampMillis}_${(1000..9999).random()}"
     }
 
     private fun updateProfile(transform: (AutoClickProfile) -> AutoClickProfile) {

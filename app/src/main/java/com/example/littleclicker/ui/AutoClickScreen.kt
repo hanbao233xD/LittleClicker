@@ -219,12 +219,10 @@ internal fun AutoClickScreen(innerPadding: PaddingValues) {
                             }
                         )
                     }
-                    if (!allGranted) {
                         Text(
                             text = "提示：$randomTip",
                             color = MiuixTheme.colorScheme.onBackgroundVariant
                         )
-                    }
                 }
             }
         }
