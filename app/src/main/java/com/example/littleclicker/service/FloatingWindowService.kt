@@ -266,6 +266,9 @@ class FloatingWindowService : LifecycleService() {
                                     }
                                 }
                             },
+                            onDragEnd = {
+                                AutoClickCoordinator.saveProfile()
+                            },
                             onLongPress = {
                                 showPointEditDialog(point)
                             },
@@ -343,11 +346,15 @@ class FloatingWindowService : LifecycleService() {
     private fun showPointEditDialog(point: AutoClickPoint) {
         pointEditDialog?.dismiss()
 
-        val xInput = createNumberInput(point.x)
-        val yInput = createNumberInput(point.y)
-        val delayInput = createNumberInput(point.delayMs.toInt())
-        val touchInput = createNumberInput(point.touchDurationMs.toInt())
-        val repeatInput = createNumberInput(point.repeatCount)
+        val latestPoint = AutoClickCoordinator.profile.value.points
+            .firstOrNull { it.id == point.id }
+            ?: point
+
+        val xInput = createNumberInput(latestPoint.x)
+        val yInput = createNumberInput(latestPoint.y)
+        val delayInput = createNumberInput(latestPoint.delayMs.toInt())
+        val touchInput = createNumberInput(latestPoint.touchDurationMs.toInt())
+        val repeatInput = createNumberInput(latestPoint.repeatCount)
 
         val container = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
@@ -364,11 +371,14 @@ class FloatingWindowService : LifecycleService() {
             .setView(container)
             .setNegativeButton("取消", null)
             .setPositiveButton("保存") { _, _ ->
-                val x = xInput.text.toString().toIntOrNull() ?: point.x
-                val y = yInput.text.toString().toIntOrNull() ?: point.y
-                val delayMs = xInputToLong(delayInput, point.delayMs, min = 0L)
-                val touchMs = xInputToLong(touchInput, point.touchDurationMs, min = 1L)
-                val repeat = repeatInput.text.toString().toIntOrNull()?.coerceAtLeast(1) ?: point.repeatCount
+                val currentPoint = AutoClickCoordinator.profile.value.points
+                    .firstOrNull { it.id == point.id }
+                    ?: point
+                val x = xInput.text.toString().toIntOrNull() ?: currentPoint.x
+                val y = yInput.text.toString().toIntOrNull() ?: currentPoint.y
+                val delayMs = xInputToLong(delayInput, currentPoint.delayMs, min = 0L)
+                val touchMs = xInputToLong(touchInput, currentPoint.touchDurationMs, min = 1L)
+                val repeat = repeatInput.text.toString().toIntOrNull()?.coerceAtLeast(1) ?: currentPoint.repeatCount
                 val bounded = clampPointCenter(IntOffset(x, y))
 
                 AutoClickCoordinator.updatePointConfig(
@@ -379,6 +389,7 @@ class FloatingWindowService : LifecycleService() {
                     touchDurationMs = touchMs,
                     repeatCount = repeat
                 )
+                AutoClickCoordinator.saveProfile()
                 Toast.makeText(this, "点击点 #${point.id} 已更新", Toast.LENGTH_SHORT).show()
             }
             .create()
@@ -607,6 +618,7 @@ private fun FloatingPanel(
 private fun TargetBubble(
     label: String,
     onDrag: (IntOffset) -> Unit,
+    onDragEnd: () -> Unit,
     onLongPress: () -> Unit,
     onRemove: () -> Unit,
 ) {
@@ -617,7 +629,9 @@ private fun TargetBubble(
                 detectTapGestures(onLongPress = { onLongPress() })
             }
             .pointerInput(Unit) {
-                detectDragGestures { change, dragAmount ->
+                detectDragGestures(
+                    onDragEnd = onDragEnd,
+                ) { change, dragAmount ->
                     change.consume()
                     onDrag(IntOffset(dragAmount.x.roundToInt(), dragAmount.y.roundToInt()))
                 }
