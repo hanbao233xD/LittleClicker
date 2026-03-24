@@ -250,3 +250,13 @@
 - 验证结果：
   - `./gradlew :app:assembleDebug` 通过。
   - `./gradlew :app:testDebugUnitTest` 通过。
+
+## 2026-03-24（配置管理页 TopAppBar + 深色适配完善）
+- `ConfigManageScreen` 顶部结构改为 `miuix Scaffold + TopAppBar`，移除原“标题 + 返回按钮”行。
+- 返回交互迁移到 TopAppBar 导航图标（左上角返回箭头）。
+- 页面内容区继续保留深浅模式动态配色：
+  - 背景渐变、卡片底色、激活态高亮、状态文案颜色均随系统主题切换；
+  - 内容区使用 `innerPadding` 正确避让 TopAppBar。
+- 验证结果：
+  - `./gradlew :app:assembleDebug` 通过。
+  - `./gradlew :app:testDebugUnitTest` 通过。
