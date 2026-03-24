@@ -96,7 +96,7 @@ enum class FloatingWindowMode {
     Run,
 }
 
-private const val FLOATING_PANEL_SCALE_FACTOR = 0.5f
+private const val FLOATING_PANEL_SCALE_FACTOR = 1f
 
 class FloatingWindowService : LifecycleService() {
 
