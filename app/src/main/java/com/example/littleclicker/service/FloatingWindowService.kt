@@ -759,7 +759,13 @@ class FloatingWindowService : LifecycleService() {
                     touchDurationMs = touchMs,
                     repeatCount = repeat
                 )
-                Toast.makeText(this, "动作 #${point.id} 已更新", Toast.LENGTH_SHORT).show()
+                val saveResult = AutoClickCoordinator.saveProfile()
+                val tip = if (saveResult.isSuccess) {
+                    "动作 #${point.id} 已更新并自动保存"
+                } else {
+                    "动作 #${point.id} 已更新，自动保存失败：${saveResult.exceptionOrNull()?.message ?: "未知错误"}"
+                }
+                Toast.makeText(this, tip, Toast.LENGTH_SHORT).show()
             }
             .create()
 

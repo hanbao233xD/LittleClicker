@@ -694,7 +694,13 @@ private fun showPointEditDialog(
                 touchDurationMs = xInputToLong(touchInput, currentPoint.touchDurationMs, min = 1L),
                 repeatCount = repeatInput.text.toString().toIntOrNull()?.coerceAtLeast(1) ?: currentPoint.repeatCount
             )
-            Toast.makeText(context, "点击点 #${point.id} 已更新", Toast.LENGTH_SHORT).show()
+            val saveResult = AutoClickCoordinator.saveProfile()
+            val tip = if (saveResult.isSuccess) {
+                "点击点 #${point.id} 已更新并自动保存"
+            } else {
+                "点击点 #${point.id} 已更新，自动保存失败：${saveResult.exceptionOrNull()?.message ?: "未知错误"}"
+            }
+            Toast.makeText(context, tip, Toast.LENGTH_SHORT).show()
         }
         .show()
 }

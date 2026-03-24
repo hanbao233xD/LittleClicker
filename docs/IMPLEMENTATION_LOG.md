@@ -368,3 +368,16 @@
   - `android:roundIcon` 从 `@mipmap/ic_launcher_round` 改为 `@drawable/icon`
 - 验证结果：
   - `./gradlew :app:assembleDebug --no-daemon` 通过。
+
+## 2026-03-25（关于页图标/外链按钮 + 动作参数编辑自动保存）
+- 关于页（`AboutScreen`）调整：
+  - 顶部图标改为 `R.drawable.icon`（与当前应用图标一致）；
+  - 保持原有列表样式，在列表中新增“官网/QQ群”两项并支持外链跳转：
+    - 官网：`https://littlecold.cn/`
+    - QQ群：`https://qm.qq.com/q/vTyFd6Fsti`
+- 动作参数编辑后自动保存：
+  - 悬浮窗编辑动作参数保存时，`updatePointConfig` 后自动执行 `AutoClickCoordinator.saveProfile()`；
+  - 首页“点击点列表”编辑动作参数保存时，`updatePointConfig` 后自动执行 `AutoClickCoordinator.saveProfile()`；
+  - 两处均增加成功/失败 Toast 提示。
+- 验证结果：
+  - `./gradlew :app:assembleDebug --no-daemon` 通过。

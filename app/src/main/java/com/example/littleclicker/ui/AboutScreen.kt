@@ -1,5 +1,8 @@
 package com.example.littleclicker.ui
 
+import android.content.ActivityNotFoundException
+import android.content.Intent
+import android.net.Uri
 import android.widget.Toast
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.clickable
@@ -37,7 +40,13 @@ internal fun AboutScreen(innerPadding: PaddingValues) {
     val context = LocalContext.current
     val appName = stringResource(R.string.app_name)
     val version = BuildConfig.VERSION_NAME
-    val items = listOf("检查更新", "隐私政策", "免责声明")
+    val aboutItems = listOf(
+        "官网",
+        "QQ群",
+        "检查更新",
+        "隐私政策",
+        "免责声明"
+    )
 
     Column(
         modifier = Modifier
@@ -48,7 +57,7 @@ internal fun AboutScreen(innerPadding: PaddingValues) {
     ) {
         Spacer(modifier = Modifier.height(20.dp))
         Image(
-            painter = painterResource(id = R.drawable.ic_launcher_foreground),
+            painter = painterResource(id = R.drawable.icon),
             contentDescription = appName,
             modifier = Modifier
                 .size(84.dp)
@@ -69,12 +78,26 @@ internal fun AboutScreen(innerPadding: PaddingValues) {
             )
         ) {
             LazyColumn(modifier = Modifier.fillMaxWidth()) {
-                items(items) { item ->
+                items(aboutItems) { item ->
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
                             .clickable {
-                                Toast.makeText(context, "$item 功能待接入", Toast.LENGTH_SHORT).show()
+                                when (item) {
+                                    "官网" -> openExternalUrl(
+                                        context = context,
+                                        url = "https://littlecold.cn/",
+                                        failureHint = "官网链接打开失败"
+                                    )
+
+                                    "QQ群" -> openExternalUrl(
+                                        context = context,
+                                        url = "https://qm.qq.com/q/vTyFd6Fsti",
+                                        failureHint = "QQ群链接打开失败"
+                                    )
+
+                                    else -> Toast.makeText(context, "$item 功能待接入", Toast.LENGTH_SHORT).show()
+                                }
                             }
                             .padding(horizontal = 18.dp, vertical = 16.dp),
                         verticalAlignment = Alignment.CenterVertically,
@@ -86,5 +109,25 @@ internal fun AboutScreen(innerPadding: PaddingValues) {
                 }
             }
         }
+    }
+}
+
+private fun openExternalUrl(
+    context: android.content.Context,
+    url: String,
+    failureHint: String,
+) {
+    runCatching {
+        val intent = Intent(Intent.ACTION_VIEW, Uri.parse(url)).apply {
+            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        }
+        context.startActivity(intent)
+    }.onFailure {
+        val message = if (it is ActivityNotFoundException) {
+            failureHint
+        } else {
+            "$failureHint：${it.message ?: "未知错误"}"
+        }
+        Toast.makeText(context, message, Toast.LENGTH_SHORT).show()
     }
 }

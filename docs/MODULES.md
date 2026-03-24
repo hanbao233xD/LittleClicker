@@ -132,7 +132,10 @@
 - 作用：展示应用品牌信息和占位入口。
 - 实现方法：
   - 文件：`app/src/main/java/com/example/littleclicker/ui/AboutScreen.kt`
-  - 展示图标、名称、版本以及基础列表项。
+  - 展示图标（`drawable/icon`）、名称、版本。
+  - 保持原有列表样式，并在列表项中接入外链：
+    - 官网：`https://littlecold.cn/`
+    - QQ群加群链接：`https://qm.qq.com/q/vTyFd6Fsti`
 
 ## 11. UI 通用工具模块（UiHelpers）
 - 作用：集中权限跳转、状态检测、日期时间选择与格式化。
@@ -144,6 +147,12 @@
     - `formatHmsWithTenths`
   - 启动前置检查：
     - `ensureOverlayStartPermissions`
+
+## 14. 动作参数自动保存规则
+- 作用：在“编辑动作参数”后立即持久化，避免用户忘记手动保存。
+- 实现方法：
+  - 悬浮窗参数编辑（`FloatingWindowService.showPointEditDialog`）保存动作参数后自动调用 `AutoClickCoordinator.saveProfile()`。
+  - 首页点击点编辑（`AutoClickScreen.showPointEditDialog`）保存动作参数后自动调用 `AutoClickCoordinator.saveProfile()`。
 
 ## 12. NTP 校时模块（SntpClient）
 - 作用：通过 UDP 123 发起 SNTP 请求，计算时钟偏移和往返延迟。
