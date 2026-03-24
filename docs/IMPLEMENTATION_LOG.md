@@ -381,3 +381,16 @@
   - 两处均增加成功/失败 Toast 提示。
 - 验证结果：
   - `./gradlew :app:assembleDebug --no-daemon` 通过。
+
+## 2026-03-25（定时触发跟随运行方式 + 音量下强制停止）
+- 定时触发与运行方式：
+  - 定时任务触发后继续使用当前自动点击配置中的 `runMode`（运行一次 / 循环运行）执行；
+  - 运行状态文案增加运行方式提示，定时触发时显示“按运行方式执行”。
+- 音量下强制停止：
+  - `AutoClickAccessibilityService` 新增按键事件处理，运行/暂停状态下按“音量下键”立即停止任务；
+  - 停止后状态提示为“检测到音量下键，已强制停止”。
+  - 无障碍配置新增键盘事件过滤能力：
+    - `accessibility_service_config.xml` 增加 `flagRequestFilterKeyEvents`；
+    - 服务连接时同步设置 `AccessibilityServiceInfo.FLAG_REQUEST_FILTER_KEY_EVENTS`，提升机型兼容性。
+- 验证结果：
+  - `./gradlew :app:assembleDebug --no-daemon` 通过。

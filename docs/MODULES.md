@@ -83,6 +83,7 @@
     - 点击点增删拖拽与参数更新
     - `scheduleAtHms(hour, minute, second)` 定时规则配置与触发
     - 轮询对齐时钟触发（20~50ms 级轮询）
+    - 定时触发执行时使用“当前配置快照”的运行方式（运行一次/循环运行）
     - NTP 校时（`syncNtpTime` / `updateNtpServer` / `currentAlignedNowMillis`）
     - 启动/暂停/继续/停止执行
     - 自动点击配置保存、加载、删除与列表刷新
@@ -93,6 +94,7 @@
   - 文件：`app/src/main/java/com/example/littleclicker/service/AutoClickAccessibilityService.kt`
   - 执行方式：`dispatchGesture` + 单点点击/滑动手势。
   - 队列规则：按点位顺序、每点重复、全局循环展开执行。
+  - 运行中热键：支持按下“音量下键”强制停止当前自动点击任务。
   - 生命周期：服务连接后注册实例；销毁时释放任务与协程。
 
 ## 8. 自动点击悬浮窗模块（FloatingWindowService）

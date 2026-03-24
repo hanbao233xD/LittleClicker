@@ -586,9 +586,17 @@ object AutoClickCoordinator {
 
         val started = AutoClickAccessibilityService.start(profileSnapshot)
         _runtime.value = if (started) {
+            val runModeLabel = when (profileSnapshot.runMode) {
+                AutoClickRunMode.RunOnce -> "运行一次"
+                AutoClickRunMode.LoopUntilStopped -> "循环运行"
+            }
             AutoClickRuntime(
                 state = AutoClickRunState.Running,
-                message = if (fromSchedule) "定时触发，正在执行" else "正在执行自动点击"
+                message = if (fromSchedule) {
+                    "定时触发，按运行方式：$runModeLabel"
+                } else {
+                    "正在执行自动点击（$runModeLabel）"
+                }
             )
         } else {
             AutoClickRuntime(

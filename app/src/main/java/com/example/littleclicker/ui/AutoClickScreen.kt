@@ -246,7 +246,7 @@ internal fun AutoClickScreen(innerPadding: PaddingValues) {
                             items = runModeItems,
                             selectedIndex = selectedRunModeIndex,
                             title = "运行方式",
-                            summary = "运行方式将保存到当前配置",
+                            summary = "运行时点按音量下键可强制停止",
                             onSelectedIndexChange = { index ->
                                 val mode = if (index == 0) {
                                     AutoClickRunMode.RunOnce

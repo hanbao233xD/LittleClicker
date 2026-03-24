@@ -1,8 +1,10 @@
 package com.example.littleclicker.service
 
 import android.accessibilityservice.AccessibilityService
+import android.accessibilityservice.AccessibilityServiceInfo
 import android.accessibilityservice.GestureDescription
 import android.graphics.Path
+import android.view.KeyEvent
 import android.view.accessibility.AccessibilityEvent
 import com.example.littleclicker.autoclick.AutoClickActionType
 import com.example.littleclicker.autoclick.AutoClickCoordinator
@@ -34,6 +36,9 @@ class AutoClickAccessibilityService : AccessibilityService() {
 
     override fun onServiceConnected() {
         super.onServiceConnected()
+        serviceInfo = serviceInfo?.apply {
+            flags = flags or AccessibilityServiceInfo.FLAG_REQUEST_FILTER_KEY_EVENTS
+        }
         instance = this
     }
 
@@ -43,6 +48,22 @@ class AutoClickAccessibilityService : AccessibilityService() {
 
     override fun onInterrupt() {
         stopExecution()
+    }
+
+    override fun onKeyEvent(event: KeyEvent): Boolean {
+        if (event.action != KeyEvent.ACTION_DOWN || event.keyCode != KeyEvent.KEYCODE_VOLUME_DOWN) {
+            return super.onKeyEvent(event)
+        }
+        val executionActive = synchronized(lock) { runnerJob?.isActive == true }
+        if (!executionActive) {
+            return super.onKeyEvent(event)
+        }
+        stopExecution()
+        AutoClickCoordinator.reportExecutionState(
+            state = AutoClickRunState.Idle,
+            message = "检测到音量下键，已强制停止"
+        )
+        return true
     }
 
     override fun onDestroy() {
