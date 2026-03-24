@@ -212,3 +212,19 @@
   - `./gradlew :app:assembleDebug` 通过。
   - `adb install -r app/build/outputs/apk/debug/app-debug.apk` 安装成功。
   - 清空 logcat 后启动 App，未检出 LittleClicker 崩溃日志。
+
+## 2026-03-24（主悬浮窗模式选择 + 最小化切换）
+- 主悬浮窗交互调整：
+  - 将侧栏“关闭”键改为“最小化切换”行为（不再直接关闭服务）；
+  - 点击一次进入最小化态，点击“最小化”再次恢复完整态；
+  - 最小化态仅保留竖排两个按钮：`运行`、`最小化`。
+- 状态提示：
+  - 每次点击最小化切换都会 Toast 提示当前状态（已最小化 / 已恢复完整模式）。
+- 首页新增模式选择：
+  - 在“动作悬浮窗与运行方式”卡片中新增 `悬浮窗模式` 下拉；
+  - 选项为：`编辑模式`、`运行模式`；
+  - 映射规则：编辑模式=完整最大化面板，运行模式=最小化面板（作为悬浮窗启动默认形态）。
+- 验证结果：
+  - `./gradlew :app:assembleDebug` 通过。
+  - `./gradlew :app:testDebugUnitTest` 通过。
+  - `adb install -r app/build/outputs/apk/debug/app-debug.apk` 安装成功。

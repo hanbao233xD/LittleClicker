@@ -38,7 +38,6 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.AddCircleOutline
-import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.PlayArrow
@@ -89,6 +88,11 @@ import kotlinx.coroutines.launch
 import kotlin.math.hypot
 import kotlin.math.roundToInt
 
+enum class FloatingWindowMode {
+    Edit,
+    Run,
+}
+
 class FloatingWindowService : LifecycleService() {
 
     private lateinit var windowManager: WindowManager
@@ -101,6 +105,7 @@ class FloatingWindowService : LifecycleService() {
     private var panelOffset: IntOffset = IntOffset(72, 180)
 
     private val pointViews = linkedMapOf<Int, PointOverlay>()
+    private val panelMinimized = MutableStateFlow(false)
     private var profileCollectJob: Job? = null
     private var runtimeCollectJob: Job? = null
     private var recordingCollectJob: Job? = null
@@ -128,7 +133,10 @@ class FloatingWindowService : LifecycleService() {
                 return Service.START_NOT_STICKY
             }
 
-            ACTION_START, null -> showOverlayIfNeeded()
+            ACTION_START, null -> {
+                panelMinimized.value = preferredMode.value == FloatingWindowMode.Run
+                showOverlayIfNeeded()
+            }
             else -> showOverlayIfNeeded()
         }
         return Service.START_STICKY
@@ -194,10 +202,12 @@ class FloatingWindowService : LifecycleService() {
                 MaterialTheme {
                     val runtime by AutoClickCoordinator.runtime.collectAsState()
                     val recording by AutoClickCoordinator.recording.collectAsState()
+                    val isPanelMinimized by panelMinimized.collectAsState()
                     FloatingPanel(
                         runState = runtime.state,
                         runMessage = runtime.message,
                         isRecording = recording.isRecording,
+                        isMinimized = isPanelMinimized,
                         onSizeChanged = { size ->
                             panelSize = size
                             updatePanelOffset(panelOffset)
@@ -260,16 +270,15 @@ class FloatingWindowService : LifecycleService() {
                             AutoClickCoordinator.removePoint(point.id)
                             Toast.makeText(this@FloatingWindowService, "已删除动作 #${point.id}", Toast.LENGTH_SHORT).show()
                         },
-                        onClose = {
-                            AutoClickCoordinator.discardUnsavedChanges()
-                                .onFailure {
-                                    Toast.makeText(
-                                        this@FloatingWindowService,
-                                        "未保存改动回滚失败：${it.message}",
-                                        Toast.LENGTH_SHORT
-                                    ).show()
-                                }
-                            stopSelf()
+                        onToggleMinimized = {
+                            val minimized = !panelMinimized.value
+                            panelMinimized.value = minimized
+                            val tip = if (minimized) {
+                                "悬浮窗已最小化"
+                            } else {
+                                "悬浮窗已恢复完整模式"
+                            }
+                            Toast.makeText(this@FloatingWindowService, tip, Toast.LENGTH_SHORT).show()
                         }
                     )
                 }
@@ -702,6 +711,7 @@ class FloatingWindowService : LifecycleService() {
             runCatching { windowManager.removeView(overlay.view) }
         }
         pointViews.clear()
+        panelMinimized.value = false
         AutoClickCoordinator.stopRecording()
         _overlayVisible.value = false
     }
@@ -729,6 +739,8 @@ class FloatingWindowService : LifecycleService() {
 
         private val _overlayVisible = MutableStateFlow(false)
         val overlayVisible: StateFlow<Boolean> = _overlayVisible.asStateFlow()
+        private val preferredMode = MutableStateFlow(FloatingWindowMode.Edit)
+        val mode: StateFlow<FloatingWindowMode> = preferredMode.asStateFlow()
 
         fun start(context: Context) {
             context.startService(Intent(context, FloatingWindowService::class.java).apply {
@@ -745,6 +757,10 @@ class FloatingWindowService : LifecycleService() {
         fun startAutoClickOverlay(context: Context) = start(context)
 
         fun stopAutoClickOverlay(context: Context) = stop(context)
+
+        fun setMode(mode: FloatingWindowMode) {
+            preferredMode.value = mode
+        }
     }
 
     private inner class OverlaySavedStateOwner : SavedStateRegistryOwner {
@@ -779,6 +795,7 @@ private fun FloatingPanel(
     runState: AutoClickRunState,
     runMessage: String?,
     isRecording: Boolean,
+    isMinimized: Boolean,
     onSizeChanged: (IntSize) -> Unit,
     onDrag: (IntOffset) -> Unit,
     onToggleRun: () -> Unit,
@@ -788,15 +805,42 @@ private fun FloatingPanel(
     onSave: () -> Unit,
     onEditPoint: (AutoClickPoint) -> Unit,
     onDeletePoint: (AutoClickPoint) -> Unit,
-    onClose: () -> Unit,
+    onToggleMinimized: () -> Unit,
 ) {
     val profile by AutoClickCoordinator.profile.collectAsState()
     val points = profile.points
-    val actionSummary = if (points.isEmpty()) {
-        "暂无动作"
-    } else {
-        points.mapIndexed { index, point -> "${index + 1}.${point.actionType.displayName}" }.joinToString("，")
+
+    if (isMinimized) {
+        Card(
+            modifier = Modifier
+                .onSizeChanged(onSizeChanged)
+                .pointerInput(Unit) {
+                    detectDragGestures { change, dragAmount ->
+                        change.consume()
+                        onDrag(IntOffset(dragAmount.x.roundToInt(), dragAmount.y.roundToInt()))
+                    }
+                },
+            shape = RoundedCornerShape(16.dp),
+            colors = CardDefaults.cardColors(containerColor = Color(0xEFFFFAF2))
+        ) {
+            Column(
+                modifier = Modifier.padding(10.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp),
+                horizontalAlignment = Alignment.CenterHorizontally
+            ) {
+                PanelMiniButton(
+                    text = "运行",
+                    onClick = onToggleRun
+                )
+                PanelMiniButton(
+                    text = "最小化",
+                    onClick = onToggleMinimized
+                )
+            }
+        }
+        return
     }
+
     Card(
         modifier = Modifier
             .onSizeChanged(onSizeChanged),
@@ -858,9 +902,9 @@ private fun FloatingPanel(
                         onClick = onSave
                     )
                     PanelActionButton(
-                        icon = Icons.Filled.Close,
-                        contentDescription = "关闭",
-                        onClick = onClose
+                        label = "缩",
+                        contentDescription = "最小化",
+                        onClick = onToggleMinimized
                     )
                 }
 
@@ -902,6 +946,28 @@ private fun FloatingPanel(
                 }
             }
         }
+    }
+}
+
+@Composable
+private fun PanelMiniButton(
+    text: String,
+    onClick: () -> Unit,
+) {
+    Box(
+        modifier = Modifier
+            .width(72.dp)
+            .height(36.dp)
+            .background(Color(0xFFF5F5F5), RoundedCornerShape(18.dp))
+            .border(1.dp, Color(0xFFE0E0E0), RoundedCornerShape(18.dp))
+            .clickable(onClick = onClick),
+        contentAlignment = Alignment.Center
+    ) {
+        Text(
+            text = text,
+            color = Color(0xFF37474F),
+            style = MaterialTheme.typography.bodyMedium
+        )
     }
 }
 

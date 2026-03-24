@@ -58,6 +58,7 @@ import com.example.littleclicker.autoclick.AutoClickRunMode
 import com.example.littleclicker.autoclick.TimeSyncState
 import com.example.littleclicker.autoclick.displayName
 import com.example.littleclicker.service.FloatingWindowService
+import com.example.littleclicker.service.FloatingWindowMode
 import com.example.littleclicker.service.TimerFloatingWindowService
 import kotlinx.coroutines.delay
 import java.util.Calendar
@@ -85,6 +86,7 @@ internal fun AutoClickScreen(innerPadding: PaddingValues) {
 
     val profile by AutoClickCoordinator.profile.collectAsState()
     val overlayEnabled by FloatingWindowService.overlayVisible.collectAsState()
+    val floatingMode by FloatingWindowService.mode.collectAsState()
     val timerOverlayEnabled by TimerFloatingWindowService.overlayVisible.collectAsState()
     val runtime by AutoClickCoordinator.runtime.collectAsState()
     val timeSync by AutoClickCoordinator.timeSync.collectAsState()
@@ -133,9 +135,14 @@ internal fun AutoClickScreen(innerPadding: PaddingValues) {
     val pendingStatuses = statuses.filterNot { it.granted }
     val randomTip = remember(refreshToken) { context.loadRandomAutoClickTip() }
     val runModeItems = listOf("运行一次", "循环运行直至手动停止")
+    val floatingModeItems = listOf("编辑模式", "运行模式")
     val selectedRunModeIndex = when (profile.runMode) {
         AutoClickRunMode.RunOnce -> 0
         AutoClickRunMode.LoopUntilStopped -> 1
+    }
+    val selectedFloatingModeIndex = when (floatingMode) {
+        FloatingWindowMode.Edit -> 0
+        FloatingWindowMode.Run -> 1
     }
 
     LazyColumn(
@@ -230,6 +237,26 @@ internal fun AutoClickScreen(innerPadding: PaddingValues) {
                     )
                     val navigationEventOwner = rememberNavigationEventDispatcherOwner(parent = null)
                     CompositionLocalProvider(LocalNavigationEventDispatcherOwner provides navigationEventOwner) {
+                        WindowDropdown(
+                            items = floatingModeItems,
+                            selectedIndex = selectedFloatingModeIndex,
+                            title = "悬浮窗模式",
+                            summary = "编辑模式=完整面板；运行模式=最小化面板，设置定时后推荐使用最小化，防止阻挡UI",
+                            onSelectedIndexChange = { index ->
+                                val mode = if (index == 0) {
+                                    FloatingWindowMode.Edit
+                                } else {
+                                    FloatingWindowMode.Run
+                                }
+                                FloatingWindowService.setMode(mode)
+                                val tip = if (mode == FloatingWindowMode.Edit) {
+                                    "悬浮窗模式：编辑模式（完整）"
+                                } else {
+                                    "悬浮窗模式：运行模式（最小化）"
+                                }
+                                Toast.makeText(context, tip, Toast.LENGTH_SHORT).show()
+                            }
+                        )
                         WindowDropdown(
                             items = runModeItems,
                             selectedIndex = selectedRunModeIndex,
