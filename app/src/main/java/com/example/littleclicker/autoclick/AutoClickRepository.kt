@@ -38,6 +38,8 @@ object AutoClickRepository {
         val points: List<AutoClickPointPayload>? = null,
         val cycleCount: Int? = null,
         val runMode: String? = null,
+        val ntpServerHost: String? = null,
+        val scheduleRuleHms: String? = null,
         val startAtMillis: Long? = null,
         val updatedAt: Long? = null,
     )
@@ -92,6 +94,8 @@ object AutoClickRepository {
         val normalized = profile.copy(
             id = profile.id.ifBlank { DEFAULT_PROFILE_ID },
             name = profile.name.ifBlank { "未命名配置" },
+            ntpServerHost = profile.ntpServerHost.ifBlank { DEFAULT_NTP_SERVER_HOST },
+            scheduleRuleHms = normalizeScheduleRuleHms(profile.scheduleRuleHms),
             updatedAt = System.currentTimeMillis()
         )
 
@@ -153,6 +157,8 @@ object AutoClickRepository {
             points = normalizedPoints,
             cycleCount = (payload.cycleCount ?: 1).coerceAtLeast(1),
             runMode = parseRunMode(payload.runMode),
+            ntpServerHost = payload.ntpServerHost?.takeIf { it.isNotBlank() } ?: DEFAULT_NTP_SERVER_HOST,
+            scheduleRuleHms = normalizeScheduleRuleHms(payload.scheduleRuleHms),
             startAtMillis = payload.startAtMillis,
             updatedAt = payload.updatedAt ?: System.currentTimeMillis()
         )
@@ -227,5 +233,13 @@ object AutoClickRepository {
         } else {
             AutoClickRunMode.RunOnce
         }
+    }
+
+    private fun normalizeScheduleRuleHms(raw: String?): String? {
+        val value = raw?.trim().orEmpty()
+        if (value.isEmpty()) return null
+        return Regex("""^\d{2}:\d{2}:\d{2}$""")
+            .takeIf { it.matches(value) }
+            ?.let { value }
     }
 }

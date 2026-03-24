@@ -106,3 +106,14 @@ internal fun formatDateTime(timeMillis: Long): String {
     val format = SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.getDefault())
     return format.format(timeMillis)
 }
+
+internal fun formatHms(timeMillis: Long): String {
+    val format = SimpleDateFormat("HH:mm:ss", Locale.getDefault())
+    return format.format(timeMillis)
+}
+
+internal fun formatHmsWithTenths(timeMillis: Long): String {
+    val base = formatHms(timeMillis)
+    val tenths = ((timeMillis % 1000L + 1000L) % 1000L) / 100L
+    return "$base.$tenths"
+}

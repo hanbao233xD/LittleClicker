@@ -11,17 +11,22 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
+import java.util.Calendar
+import java.util.Locale
 
 object AutoClickCoordinator {
 
     private const val AUTO_NAME_PREFIX = "点击配置_"
+    private const val SCHEDULE_POLL_INTERVAL_MS = 30L
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
 
     private var appContext: Context? = null
     private var initialized = false
     private var scheduleJob: Job? = null
+    private var timeSyncJob: Job? = null
 
     private val _profile = MutableStateFlow(AutoClickProfile())
     val profile: StateFlow<AutoClickProfile> = _profile.asStateFlow()
@@ -35,17 +40,23 @@ object AutoClickCoordinator {
     private val _recording = MutableStateFlow(AutoClickRecordingState())
     val recording: StateFlow<AutoClickRecordingState> = _recording.asStateFlow()
 
+    private val _timeSync = MutableStateFlow(TimeSyncState())
+    val timeSync: StateFlow<TimeSyncState> = _timeSync.asStateFlow()
+
     fun initialize(context: Context) {
         val applicationContext = context.applicationContext
         appContext = applicationContext
         if (initialized) {
             refreshProfiles()
+            refreshTimeSyncServerFromProfile()
             return
         }
 
         _profile.value = AutoClickRepository.loadActiveProfile(applicationContext)
         refreshProfiles()
         initialized = true
+        refreshTimeSyncServerFromProfile()
+        syncNtpTime(force = false)
         restoreScheduleForCurrentProfile()
     }
 
@@ -64,6 +75,8 @@ object AutoClickCoordinator {
             AutoClickRepository.setActiveProfileId(context, loaded.id)
             _profile.value = loaded
             refreshProfiles()
+            refreshTimeSyncServerFromProfile()
+            syncNtpTime(force = false)
             restoreScheduleForCurrentProfile()
             loaded
         }
@@ -85,6 +98,7 @@ object AutoClickCoordinator {
             AutoClickRepository.saveProfile(context, newProfile, makeActive = true)
             _profile.value = newProfile
             refreshProfiles()
+            refreshTimeSyncServerFromProfile()
             _runtime.value = AutoClickRuntime(
                 state = AutoClickRunState.Idle,
                 message = "已切换到新配置：${newProfile.name}"
@@ -136,9 +150,12 @@ object AutoClickCoordinator {
             if (isDeletedActive) {
                 stop()
                 _profile.value = nextActive
+                refreshTimeSyncServerFromProfile()
+                syncNtpTime(force = false)
                 restoreScheduleForCurrentProfile()
             } else {
                 _profile.value = nextActive
+                refreshTimeSyncServerFromProfile()
             }
             refreshProfiles()
             _runtime.value = AutoClickRuntime(
@@ -179,6 +196,8 @@ object AutoClickCoordinator {
             } ?: AutoClickRepository.loadActiveProfile(context)
             _profile.value = restored
             refreshProfiles()
+            refreshTimeSyncServerFromProfile()
+            restoreScheduleForCurrentProfile()
             restored
         }
     }
@@ -410,38 +429,138 @@ object AutoClickCoordinator {
         }
     }
 
+    fun updateNtpServer(host: String) {
+        val normalized = host.trim().ifBlank { DEFAULT_NTP_SERVER_HOST }
+        updateProfile { current -> current.copy(ntpServerHost = normalized) }
+        _timeSync.update {
+            it.copy(
+                serverHost = normalized,
+                isSynced = false,
+                delayMillis = null,
+                fallbackToDeviceTime = true,
+                errorMessage = "正在校时..."
+            )
+        }
+        syncNtpTime(force = true)
+    }
+
+    fun syncNtpTime(force: Boolean = true) {
+        val targetServer = _profile.value.ntpServerHost.ifBlank { DEFAULT_NTP_SERVER_HOST }
+        if (!force && _timeSync.value.serverHost == targetServer && _timeSync.value.isSynced) {
+            return
+        }
+        if (timeSyncJob?.isActive == true) {
+            if (!force) return
+            timeSyncJob?.cancel()
+        }
+
+        _timeSync.update {
+            it.copy(
+                serverHost = targetServer,
+                errorMessage = if (force) "正在校时..." else it.errorMessage
+            )
+        }
+
+        timeSyncJob = scope.launch {
+            runCatching {
+                SntpClient.query(targetServer)
+            }.onSuccess { result ->
+                _timeSync.value = TimeSyncState(
+                    serverHost = result.serverHost,
+                    isSynced = true,
+                    offsetMillis = result.offsetMillis,
+                    delayMillis = result.delayMillis,
+                    fallbackToDeviceTime = false,
+                    errorMessage = null
+                )
+            }.onFailure { error ->
+                _timeSync.value = TimeSyncState(
+                    serverHost = targetServer,
+                    isSynced = false,
+                    offsetMillis = 0L,
+                    delayMillis = null,
+                    fallbackToDeviceTime = true,
+                    errorMessage = error.message ?: "NTP 校时失败"
+                )
+            }
+        }
+    }
+
+    fun currentAlignedNowMillis(): Long {
+        val sync = _timeSync.value
+        return System.currentTimeMillis() + sync.offsetMillis
+    }
+
     fun clearScheduleTime() {
         cancelSchedule()
-        updateProfile { current -> current.copy(startAtMillis = null) }
+        updateProfile { current -> current.copy(startAtMillis = null, scheduleRuleHms = null) }
         _runtime.value = AutoClickRuntime(
             state = AutoClickRunState.Idle,
             message = "已清除定时"
         )
     }
 
-    fun scheduleAt(startAtMillis: Long): Boolean {
-        if (startAtMillis <= System.currentTimeMillis()) {
+    fun scheduleAtHms(hour: Int, minute: Int, second: Int): Boolean {
+        if (appContext != null) {
+            syncNtpTime(force = false)
+        }
+
+        val safeHour = hour.coerceIn(0, 23)
+        val safeMinute = minute.coerceIn(0, 59)
+        val safeSecond = second.coerceIn(0, 59)
+        val rule = formatHms(safeHour, safeMinute, safeSecond)
+        val now = currentAlignedNowMillis()
+        val target = Calendar.getInstance().apply {
+            timeInMillis = now
+            set(Calendar.HOUR_OF_DAY, safeHour)
+            set(Calendar.MINUTE, safeMinute)
+            set(Calendar.SECOND, safeSecond)
+            set(Calendar.MILLISECOND, 0)
+        }.timeInMillis
+
+        if (target <= now) {
+            updateProfile { current ->
+                current.copy(
+                    scheduleRuleHms = rule,
+                    startAtMillis = null
+                )
+            }
             _runtime.value = AutoClickRuntime(
                 state = AutoClickRunState.Failed,
-                message = "定时时间已过期，请重新设置",
+                message = "设定时间已过期，请重新设置",
+                scheduledAtMillis = target
+            )
+            return false
+        }
+
+        updateProfile { current ->
+            current.copy(
+                scheduleRuleHms = rule,
+                startAtMillis = target
+            )
+        }
+        armSchedule(target)
+        return true
+    }
+
+    fun scheduleAt(startAtMillis: Long): Boolean {
+        if (startAtMillis <= currentAlignedNowMillis()) {
+            _runtime.value = AutoClickRuntime(
+                state = AutoClickRunState.Failed,
+                message = "定时时间已过期，请重新选择",
                 scheduledAtMillis = startAtMillis
             )
             return false
         }
 
-        updateProfile { current -> current.copy(startAtMillis = startAtMillis) }
-        cancelSchedule()
-        _runtime.value = AutoClickRuntime(
-            state = AutoClickRunState.Scheduled,
-            message = "已定时，等待开始",
-            scheduledAtMillis = startAtMillis
+        val calendar = Calendar.getInstance().apply { timeInMillis = startAtMillis }
+        val rule = formatHms(
+            hour = calendar.get(Calendar.HOUR_OF_DAY),
+            minute = calendar.get(Calendar.MINUTE),
+            second = calendar.get(Calendar.SECOND)
         )
-
-        scheduleJob = scope.launch {
-            val delayMillis = (startAtMillis - System.currentTimeMillis()).coerceAtLeast(0L)
-            delay(delayMillis)
-            startNow(fromSchedule = true)
-        }
+        updateProfile { current -> current.copy(startAtMillis = startAtMillis, scheduleRuleHms = rule) }
+        armSchedule(startAtMillis)
         return true
     }
 
@@ -549,18 +668,47 @@ object AutoClickCoordinator {
     private fun restoreScheduleForCurrentProfile() {
         val pendingStartAt = _profile.value.startAtMillis
         if (pendingStartAt == null) {
-            _runtime.value = AutoClickRuntime(state = AutoClickRunState.Idle, message = "配置已加载")
+            if (_runtime.value.state == AutoClickRunState.Scheduled) {
+                _runtime.value = AutoClickRuntime(state = AutoClickRunState.Idle, message = "配置已加载")
+            }
             return
         }
 
-        if (pendingStartAt > System.currentTimeMillis()) {
-            scheduleAt(pendingStartAt)
+        if (pendingStartAt > currentAlignedNowMillis()) {
+            armSchedule(pendingStartAt)
         } else {
             _runtime.value = AutoClickRuntime(
                 state = AutoClickRunState.Failed,
                 message = "当前配置中的定时已过期，请重新设置",
                 scheduledAtMillis = pendingStartAt
             )
+        }
+    }
+
+    private fun armSchedule(startAtMillis: Long) {
+        cancelSchedule()
+        _runtime.value = AutoClickRuntime(
+            state = AutoClickRunState.Scheduled,
+            message = "已定时，等待开始",
+            scheduledAtMillis = startAtMillis
+        )
+
+        scheduleJob = scope.launch {
+            while (isActive) {
+                val delta = startAtMillis - currentAlignedNowMillis()
+                if (delta <= 0L) {
+                    startNow(fromSchedule = true)
+                    break
+                }
+                delay(minOf(SCHEDULE_POLL_INTERVAL_MS, delta))
+            }
+        }
+    }
+
+    private fun refreshTimeSyncServerFromProfile() {
+        val server = _profile.value.ntpServerHost.ifBlank { DEFAULT_NTP_SERVER_HOST }
+        _timeSync.update {
+            if (it.serverHost == server) it else it.copy(serverHost = server)
         }
     }
 
@@ -586,6 +734,8 @@ object AutoClickCoordinator {
             val updated = transform(current)
             updated.copy(
                 cycleCount = updated.cycleCount.coerceAtLeast(1),
+                ntpServerHost = updated.ntpServerHost.ifBlank { DEFAULT_NTP_SERVER_HOST },
+                scheduleRuleHms = normalizeScheduleRuleHms(updated.scheduleRuleHms),
                 points = updated.points.map { point ->
                     val normalizedType = point.actionType
                     point.copy(
@@ -632,5 +782,15 @@ object AutoClickCoordinator {
                 endY = boundedBase
             )
         }
+    }
+
+    private fun normalizeScheduleRuleHms(raw: String?): String? {
+        val value = raw?.trim().orEmpty()
+        if (value.isEmpty()) return null
+        return if (Regex("""^\d{2}:\d{2}:\d{2}$""").matches(value)) value else null
+    }
+
+    private fun formatHms(hour: Int, minute: Int, second: Int): String {
+        return String.format(Locale.getDefault(), "%02d:%02d:%02d", hour, minute, second)
     }
 }

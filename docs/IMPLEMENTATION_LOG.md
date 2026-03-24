@@ -175,3 +175,40 @@
 - 验证结果：
   - `./gradlew :app:testDebugUnitTest` 通过。
   - `./gradlew :app:assembleDebug` 通过。
+
+## 2026-03-24（定时触发 + NTP 校时 + 独立定时悬浮窗）
+- 数据层扩展：
+  - `AutoClickProfile` 新增 `ntpServerHost`（默认 `ntp.aliyun.com`）与 `scheduleRuleHms`；
+  - 新增 `TimeSyncState`，用于承载校时状态、偏移与延迟；
+  - `AutoClickRepository` 兼容旧 JSON：缺失新字段时自动回填默认值。
+- 新增 NTP 能力：
+  - 新增 `SntpClient`（UDP 123）并返回 `offsetMillis` / `delayMillis`；
+  - `AutoClickCoordinator` 新增 `syncNtpTime`、`updateNtpServer`、`currentAlignedNowMillis`；
+  - 校时失败自动回退本机时间，且不阻塞定时配置。
+- 定时规则升级：
+  - 新增 `scheduleAtHms(hour, minute, second)`，仅保留一条规则并覆盖旧规则；
+  - 若设定 `hh:mm:ss` 已过期，直接提示失败且不生效；
+  - 触发逻辑改为短轮询对齐时钟（`30ms`），到点自动 `startNow(fromSchedule = true)`。
+- UI 重构（AutoClickScreen）：
+  - 定时卡片改为大字时钟样式，实时展示 `HH:mm:ss.S`（1 位小数）；
+  - 增加 `选择时间`（自定义 `hh:mm:ss` 选择 GUI）、`开启/关闭定时悬浮窗`、`配置ntp服务器` 三入口；
+  - 新增 NTP 状态文案、设定时间文案、运行状态文案；
+  - 原“动作悬浮窗”文案改名，避免与定时悬浮窗混淆。
+- 新增服务：
+  - 新增 `TimerFloatingWindowService`（独立服务，不替换 `FloatingWindowService`）；
+  - 灰色半透明背景、可拖动、单行展示：当前时间 + 设定时间 + 运行状态。
+- 系统清单：
+  - `AndroidManifest.xml` 新增 `INTERNET` 权限；
+  - 注册 `TimerFloatingWindowService`。
+- 测试补充：
+  - 扩展 `AutoClickSerializationTest`：新增字段 round-trip、旧 JSON 默认回填、`scheduleAtHms` 过期/有效分支；
+  - 新增 `UiHelpersFormatTest`：覆盖 `formatHms` 与 `formatHmsWithTenths`。
+- 联调流程（按项目约定）：
+  - 临时在 `MainActivity` 注入“启动自动触发新定时能力”代码，并提示无障碍状态；
+  - 执行：编译 -> 安装 -> 清空并抓取 logcat -> 启动 App；
+  - 观察到无 `FATAL EXCEPTION` / `Process: com.example.littleclicker` 崩溃后，已移除该临时代码。
+- 验证结果：
+  - `./gradlew :app:testDebugUnitTest` 通过。
+  - `./gradlew :app:assembleDebug` 通过。
+  - `adb install -r app/build/outputs/apk/debug/app-debug.apk` 安装成功。
+  - 清空 logcat 后启动 App，未检出 LittleClicker 崩溃日志。

@@ -1,6 +1,6 @@
 # LittleClicker 模块说明
 
-最后更新：2026-03-23
+最后更新：2026-03-24
 
 ## 1. 构建模块（Gradle）
 - 作用：管理 Android App 编译、依赖与 Compose 构建能力。
@@ -18,10 +18,12 @@
   - 权限声明：
     - `SYSTEM_ALERT_WINDOW`（悬浮窗）
     - `REQUEST_IGNORE_BATTERY_OPTIMIZATIONS`（忽略电池优化请求）
+    - `INTERNET`（NTP 校时）
   - 组件声明：
     - `MainActivity`
     - `AutoClickAccessibilityService`
     - `FloatingWindowService`
+    - `TimerFloatingWindowService`
 
 ## 3. 导航壳模块（MainActivity）
 - 作用：提供主导航壳与应用启动入口。
@@ -40,7 +42,12 @@
     - `profile.name`
     - `cycleCount`
     - 每个点击点的 `delayMs`、`touchDurationMs`、`repeatCount`
-  - 定时项：选择本地时间点 `startAtMillis`，支持清除定时与过期提示。
+  - 定时项：
+    - 自定义 `hh:mm:ss` 选择器（默认当前时分，秒默认 `00`）
+    - 大字实时时钟显示 `HH:mm:ss.S`（1 位小数）
+    - NTP 状态展示、NTP 服务器配置入口
+    - 定时悬浮窗开关入口
+    - 设定时间规则展示与过期提示
   - 运行项：开启悬浮窗、立即开始、暂停/继续、停止、保存配置。
   - 点击点列表：改为只读展示，参数编辑入口迁移至悬浮窗长按弹窗。
 
@@ -55,8 +62,12 @@
       - 新增动作类型：`Click` / `Swipe`
       - 滑动动作支持终点坐标：`endX` / `endY`
     - `AutoClickProfile`
+      - 新增 `ntpServerHost`（默认 `ntp.aliyun.com`）
+      - 新增 `scheduleRuleHms`（保存 `hh:mm:ss` 规则）
     - `AutoClickRunState`
+    - `TimeSyncState`
   - 存储位置：`filesDir` 私有目录（`autoclick/profiles/*.json`、`autoclick/state.json`）。
+  - 兼容策略：旧 JSON 缺失新增字段时自动回填默认值，不破坏历史配置。
 
 ## 6. 自动点击协调模块（AutoClickCoordinator）
 - 作用：统一页面、悬浮窗、无障碍服务的状态与操作入口。
@@ -64,8 +75,11 @@
   - 文件：`app/src/main/java/com/example/littleclicker/autoclick/AutoClickCoordinator.kt`
   - 能力：
     - 管理 `profile/profiles/runtime/recording` 的 `StateFlow`
+    - 管理 `timeSync`（NTP 校时状态）`StateFlow`
     - 点击点增删拖拽与参数更新
-    - 应用内可靠定时（进程存活时到点触发）
+    - `scheduleAtHms(hour, minute, second)` 定时规则配置与触发
+    - 轮询对齐时钟触发（20~50ms 级轮询）
+    - NTP 校时（`syncNtpTime` / `updateNtpServer` / `currentAlignedNowMillis`）
     - 启动/暂停/继续/停止执行
     - 自动点击配置保存、加载、删除与列表刷新
 
@@ -115,3 +129,23 @@
 - 作用：集中权限跳转、状态检测、日期时间选择与格式化。
 - 实现方法：
   - 文件：`app/src/main/java/com/example/littleclicker/ui/UiHelpers.kt`
+  - 关键格式化：
+    - `formatDateTime`
+    - `formatHms`
+    - `formatHmsWithTenths`
+
+## 12. NTP 校时模块（SntpClient）
+- 作用：通过 UDP 123 发起 SNTP 请求，计算时钟偏移和往返延迟。
+- 实现方法：
+  - 文件：`app/src/main/java/com/example/littleclicker/autoclick/SntpClient.kt`
+  - 输出：`offsetMillis`、`delayMillis`、`serverHost`。
+  - 失败兜底：由协调器回退到本机时间，不阻塞定时功能。
+
+## 13. 定时悬浮窗模块（TimerFloatingWindowService）
+- 作用：提供独立于动作编辑悬浮窗的定时状态浮窗。
+- 实现方法：
+  - 文件：`app/src/main/java/com/example/littleclicker/service/TimerFloatingWindowService.kt`
+  - 渲染：`WindowManager + ComposeView`。
+  - 样式：灰色半透明背景、圆角、可拖动。
+  - 文案：单行显示 `HH:mm:ss.S`、`设定时间`、`运行状态`。
+  - 对外入口：`start(context)` / `stop(context)` 与 `overlayVisible` 状态流。

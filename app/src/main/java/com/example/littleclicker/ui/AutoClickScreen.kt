@@ -1,11 +1,19 @@
 package com.example.littleclicker.ui
 
+import android.app.AlertDialog
 import android.content.Context
 import android.content.Intent
 import android.provider.Settings
+import android.text.Spanned
+import android.text.InputType
+import android.widget.EditText
+import android.widget.LinearLayout
+import android.widget.NumberPicker
 import android.widget.Toast
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
@@ -13,16 +21,19 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -30,8 +41,11 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
@@ -41,8 +55,12 @@ import com.example.littleclicker.ConfigManageActivity
 import com.example.littleclicker.R
 import com.example.littleclicker.autoclick.AutoClickCoordinator
 import com.example.littleclicker.autoclick.AutoClickRunMode
+import com.example.littleclicker.autoclick.TimeSyncState
 import com.example.littleclicker.autoclick.displayName
 import com.example.littleclicker.service.FloatingWindowService
+import com.example.littleclicker.service.TimerFloatingWindowService
+import kotlinx.coroutines.delay
+import java.util.Calendar
 import kotlin.random.Random
 import top.yukonga.miuix.kmp.basic.Button
 import top.yukonga.miuix.kmp.basic.Card
@@ -63,17 +81,27 @@ private data class PermissionStatus(
 internal fun AutoClickScreen(innerPadding: PaddingValues) {
     val context = LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current
-    var refreshToken by remember { mutableStateOf(0) }
+    var refreshToken by remember { mutableIntStateOf(0) }
 
     val profile by AutoClickCoordinator.profile.collectAsState()
     val overlayEnabled by FloatingWindowService.overlayVisible.collectAsState()
+    val timerOverlayEnabled by TimerFloatingWindowService.overlayVisible.collectAsState()
     val runtime by AutoClickCoordinator.runtime.collectAsState()
+    val timeSync by AutoClickCoordinator.timeSync.collectAsState()
+
+    val nowAlignedMillis by produceState(initialValue = AutoClickCoordinator.currentAlignedNowMillis()) {
+        while (true) {
+            value = AutoClickCoordinator.currentAlignedNowMillis()
+            delay(100L)
+        }
+    }
 
     DisposableEffect(lifecycleOwner) {
         val observer = LifecycleEventObserver { _, event ->
             if (event == Lifecycle.Event.ON_RESUME) {
                 refreshToken++
                 AutoClickCoordinator.initialize(context)
+                AutoClickCoordinator.syncNtpTime(force = false)
             }
         }
         lifecycleOwner.lifecycle.addObserver(observer)
@@ -103,8 +131,6 @@ internal fun AutoClickScreen(innerPadding: PaddingValues) {
         )
     }
     val pendingStatuses = statuses.filterNot { it.granted }
-    val allGranted = pendingStatuses.isEmpty()
-    val expiredSchedule = profile.startAtMillis?.let { it <= System.currentTimeMillis() } == true
     val randomTip = remember(refreshToken) { context.loadRandomAutoClickTip() }
     val runModeItems = listOf("运行一次", "循环运行直至手动停止")
     val selectedRunModeIndex = when (profile.runMode) {
@@ -178,7 +204,7 @@ internal fun AutoClickScreen(innerPadding: PaddingValues) {
                         .padding(14.dp),
                     verticalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
-                    Text("悬浮窗与运行方式")
+                    Text("动作悬浮窗与运行方式")
                     Text(
                         text = "状态：${runtime.state} ${runtime.message ?: ""}",
                         color = MiuixTheme.colorScheme.onBackgroundVariant
@@ -193,14 +219,14 @@ internal fun AutoClickScreen(innerPadding: PaddingValues) {
                                     return@SuperSwitch
                                 }
                                 FloatingWindowService.startAutoClickOverlay(context)
-                                Toast.makeText(context, "自动点击悬浮窗已启动", Toast.LENGTH_SHORT).show()
+                                Toast.makeText(context, "动作悬浮窗已启动", Toast.LENGTH_SHORT).show()
                             } else {
                                 FloatingWindowService.stopAutoClickOverlay(context)
-                                Toast.makeText(context, "自动点击悬浮窗已关闭", Toast.LENGTH_SHORT).show()
+                                Toast.makeText(context, "动作悬浮窗已关闭", Toast.LENGTH_SHORT).show()
                             }
                         },
-                        title = "悬浮窗开关",
-                        summary = "请先给予应用所需权限"
+                        title = "动作悬浮窗开关",
+                        summary = "用于编辑动作与录制"
                     )
                     val navigationEventOwner = rememberNavigationEventDispatcherOwner(parent = null)
                     CompositionLocalProvider(LocalNavigationEventDispatcherOwner provides navigationEventOwner) {
@@ -219,66 +245,61 @@ internal fun AutoClickScreen(innerPadding: PaddingValues) {
                             }
                         )
                     }
-                        Text(
-                            text = "提示：$randomTip",
-                            color = MiuixTheme.colorScheme.onBackgroundVariant
-                        )
+                    Text(
+                        text = "提示：$randomTip",
+                        color = MiuixTheme.colorScheme.onBackgroundVariant
+                    )
                 }
             }
         }
 
         item {
-            Card(
-                modifier = Modifier.fillMaxWidth(),
-                cornerRadius = 20.dp,
-                colors = CardDefaults.defaultColors(
-                    color = Color.White,
-                    contentColor = MiuixTheme.colorScheme.onSurfaceContainer
-                )
-            ) {
-                Column(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(14.dp),
-                    verticalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    Text("定时开始")
-                    Text(
-                        text = profile.startAtMillis?.let { formatDateTime(it) } ?: "未设置",
-                        color = MiuixTheme.colorScheme.onBackgroundVariant
-                    )
-                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        Button(
-                            onClick = {
-                                showDateTimePicker(
-                                    context = context,
-                                    initialMillis = profile.startAtMillis,
-                                    onSelected = { millis ->
-                                        val success = AutoClickCoordinator.scheduleAt(millis)
-                                        val tip = if (success) "定时已设置" else "定时失败，请重新选择时间"
-                                        Toast.makeText(context, tip, Toast.LENGTH_SHORT).show()
-                                    }
-                                )
+            TimerCard(
+                nowAlignedMillis = nowAlignedMillis,
+                runtimeLabel = "${runtime.state} ${runtime.message ?: ""}".trim(),
+                timeSync = timeSync,
+                scheduleRuleHms = profile.scheduleRuleHms,
+                timerOverlayEnabled = timerOverlayEnabled,
+                onPickTime = {
+                    showHmsPickerDialog(
+                        context = context,
+                        initialMillis = nowAlignedMillis,
+                        onSelected = { hour, minute, second ->
+                            val success = AutoClickCoordinator.scheduleAtHms(hour, minute, second)
+                            val tip = if (success) {
+                                "定时已设置：${String.format("%02d:%02d:%02d", hour, minute, second)}"
+                            } else {
+                                "设定时间已过期，请重新设置"
                             }
-                        ) {
-                            Text("选择时间")
+                            Toast.makeText(context, tip, Toast.LENGTH_SHORT).show()
                         }
-                        Button(onClick = { AutoClickCoordinator.clearScheduleTime() }) {
-                            Text("清除定时")
-                        }
+                    )
+                },
+                onToggleTimerOverlay = {
+                    if (!Settings.canDrawOverlays(context)) {
+                        openOverlaySettings(context)
+                        Toast.makeText(context, "请先授予悬浮窗权限", Toast.LENGTH_SHORT).show()
+                        return@TimerCard
                     }
-                    if (expiredSchedule) {
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Text("定时已过期", color = Color(0xFFB00020))
-                            Text("请通过悬浮窗启动", color = MiuixTheme.colorScheme.onBackgroundVariant)
-                        }
+                    if (timerOverlayEnabled) {
+                        TimerFloatingWindowService.stop(context)
+                        Toast.makeText(context, "定时悬浮窗已关闭", Toast.LENGTH_SHORT).show()
+                    } else {
+                        TimerFloatingWindowService.start(context)
+                        Toast.makeText(context, "定时悬浮窗已开启", Toast.LENGTH_SHORT).show()
                     }
+                },
+                onConfigNtp = {
+                    showNtpServerConfigDialog(
+                        context = context,
+                        initialHost = profile.ntpServerHost,
+                        onSave = { host ->
+                            AutoClickCoordinator.updateNtpServer(host)
+                            Toast.makeText(context, "NTP服务器已更新：$host", Toast.LENGTH_SHORT).show()
+                        }
+                    )
                 }
-            }
+            )
         }
 
         item {
@@ -329,7 +350,7 @@ internal fun AutoClickScreen(innerPadding: PaddingValues) {
         if (profile.points.isEmpty()) {
             item {
                 Text(
-                    text = "暂无点击点，可点击“添加点击点”或在悬浮窗中添加。",
+                    text = "暂无点击点，可点击“添加点击点”或在动作悬浮窗中添加。",
                     color = MiuixTheme.colorScheme.onBackgroundVariant
                 )
             }
@@ -363,7 +384,7 @@ internal fun AutoClickScreen(innerPadding: PaddingValues) {
                             color = MiuixTheme.colorScheme.onBackgroundVariant
                         )
                         Text(
-                            text = "编辑方式：长按悬浮窗中的对应点击点",
+                            text = "编辑方式：长按动作悬浮窗中的对应点击点",
                             color = Color(0xFF1D6ED8)
                         )
                     }
@@ -375,6 +396,196 @@ internal fun AutoClickScreen(innerPadding: PaddingValues) {
             Spacer(modifier = Modifier.height(24.dp))
         }
     }
+}
+
+@Composable
+private fun TimerCard(
+    nowAlignedMillis: Long,
+    runtimeLabel: String,
+    timeSync: TimeSyncState,
+    scheduleRuleHms: String?,
+    timerOverlayEnabled: Boolean,
+    onPickTime: () -> Unit,
+    onToggleTimerOverlay: () -> Unit,
+    onConfigNtp: () -> Unit,
+) {
+    val nowHms = formatHms(nowAlignedMillis)
+    val tenths = (nowAlignedMillis % 1000L + 1000L) % 1000L / 100L
+    val syncLabel = if (timeSync.isSynced) {
+        "NTP已校准，延迟${timeSync.delayMillis ?: 0}ms"
+    } else {
+        "NTP未校准，已回退本机时间"
+    }
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        cornerRadius = 20.dp,
+        colors = CardDefaults.defaultColors(
+            color = Color.White,
+            contentColor = MiuixTheme.colorScheme.onSurfaceContainer
+        )
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(14.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp)
+        ) {
+            Text("定时", fontWeight = FontWeight.Bold)
+            Text(
+                text = syncLabel,
+                color = MiuixTheme.colorScheme.onBackgroundVariant
+            )
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                cornerRadius = 16.dp,
+                colors = CardDefaults.defaultColors(
+                    color = Color(0xFFF6F8FC),
+                    contentColor = MiuixTheme.colorScheme.onSurfaceContainer
+                )
+            ) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(154.dp)
+                        .padding(horizontal = 12.dp),
+                    contentAlignment = Alignment.CenterStart
+                ) {
+                    AdaptiveNowTimeText(
+                        nowHms = nowHms,
+                        tenths = tenths,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                }
+            }
+            Button(
+                onClick = onPickTime,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .heightIn(min = 56.dp)
+            ) {
+                Text("选择时间")
+            }
+            Button(
+                onClick = onToggleTimerOverlay,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .heightIn(min = 56.dp)
+            ) {
+                Text(if (timerOverlayEnabled) "关闭定时悬浮窗" else "开启定时悬浮窗")
+            }
+            Button(
+                onClick = onConfigNtp,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .heightIn(min = 56.dp)
+            ) {
+                Text("配置ntp服务器")
+            }
+            Text(
+                "设定时间：${scheduleRuleHms ?: "未设置"}",
+                color = MiuixTheme.colorScheme.onBackgroundVariant
+            )
+            Text(
+                "运行状态：$runtimeLabel",
+                color = MiuixTheme.colorScheme.onBackgroundVariant
+            )
+        }
+    }
+}
+
+@Composable
+private fun AdaptiveNowTimeText(
+    nowHms: String,
+    tenths: Long,
+    modifier: Modifier = Modifier,
+) {
+    BoxWithConstraints(modifier = modifier) {
+        val widthDp = maxWidth.value
+        val heightDp = maxHeight.value
+        val fitSp = computeFitFontSp(widthDp = widthDp, heightDp = heightDp)
+        val content = buildAnnotatedString {
+            append(nowHms)
+            pushStyle(androidx.compose.ui.text.SpanStyle(color = Color(0xFFEAA4BE)))
+            append(".$tenths")
+            pop()
+        }
+        Text(
+            text = content,
+            fontSize = fitSp,
+            fontWeight = FontWeight.Bold
+        )
+    }
+}
+
+private fun computeFitFontSp(widthDp: Float, heightDp: Float): TextUnit {
+    val byWidth = widthDp / 6.0f
+    val byHeight = heightDp * 0.76f
+    return minOf(byWidth, byHeight).coerceIn(36f, 92f).sp
+}
+
+private fun showNtpServerConfigDialog(
+    context: Context,
+    initialHost: String,
+    onSave: (String) -> Unit,
+) {
+    val input = EditText(context).apply {
+        inputType = InputType.TYPE_CLASS_TEXT
+        setText(initialHost)
+        setSelection(text?.length ?: 0)
+        hint = "ntp.aliyun.com"
+    }
+    AlertDialog.Builder(context)
+        .setTitle("配置NTP服务器")
+        .setView(input)
+        .setMessage("默认：ntp.aliyun.com")
+        .setNegativeButton("取消", null)
+        .setPositiveButton("保存") { _, _
+            -> onSave(input.text.toString().trim().ifBlank { "ntp.aliyun.com" })
+        }
+        .show()
+}
+
+private fun showHmsPickerDialog(
+    context: Context,
+    initialMillis: Long,
+    onSelected: (Int, Int, Int) -> Unit,
+) {
+    val calendar = Calendar.getInstance().apply { timeInMillis = initialMillis }
+    val hourPicker = NumberPicker(context).apply {
+        minValue = 0
+        maxValue = 23
+        value = calendar.get(Calendar.HOUR_OF_DAY)
+        setFormatter { String.format("%02d", it) }
+    }
+    val minutePicker = NumberPicker(context).apply {
+        minValue = 0
+        maxValue = 59
+        value = calendar.get(Calendar.MINUTE)
+        setFormatter { String.format("%02d", it) }
+    }
+    val secondPicker = NumberPicker(context).apply {
+        minValue = 0
+        maxValue = 59
+        value = 0
+        setFormatter { String.format("%02d", it) }
+    }
+
+    val container = LinearLayout(context).apply {
+        orientation = LinearLayout.HORIZONTAL
+        setPadding(40, 20, 40, 10)
+        addView(hourPicker, LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f))
+        addView(minutePicker, LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f))
+        addView(secondPicker, LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f))
+    }
+
+    AlertDialog.Builder(context)
+        .setTitle("选择时间（hh:mm:ss）")
+        .setView(container)
+        .setNegativeButton("取消", null)
+        .setPositiveButton("确认") { _, _ ->
+            onSelected(hourPicker.value, minutePicker.value, secondPicker.value)
+        }
+        .show()
 }
 
 private fun Context.loadRandomAutoClickTip(): String {

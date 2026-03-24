@@ -12,12 +12,16 @@ data class AutoClickPoint(
     val repeatCount: Int = 1,
 )
 
+const val DEFAULT_NTP_SERVER_HOST = "ntp.aliyun.com"
+
 data class AutoClickProfile(
     val id: String = "default",
     val name: String = "默认自动点击配置",
     val points: List<AutoClickPoint> = emptyList(),
     val cycleCount: Int = 1,
     val runMode: AutoClickRunMode = AutoClickRunMode.RunOnce,
+    val ntpServerHost: String = DEFAULT_NTP_SERVER_HOST,
+    val scheduleRuleHms: String? = null,
     val startAtMillis: Long? = null,
     val updatedAt: Long = System.currentTimeMillis(),
 )
@@ -51,6 +55,15 @@ data class AutoClickRuntime(
     val state: AutoClickRunState = AutoClickRunState.Idle,
     val message: String? = null,
     val scheduledAtMillis: Long? = null,
+)
+
+data class TimeSyncState(
+    val serverHost: String = DEFAULT_NTP_SERVER_HOST,
+    val isSynced: Boolean = false,
+    val offsetMillis: Long = 0L,
+    val delayMillis: Long? = null,
+    val fallbackToDeviceTime: Boolean = true,
+    val errorMessage: String? = null,
 )
 
 data class AutoClickRecordingState(
