@@ -19,6 +19,7 @@
     - `SYSTEM_ALERT_WINDOW`（悬浮窗）
     - `REQUEST_IGNORE_BATTERY_OPTIMIZATIONS`（忽略电池优化请求）
     - `INTERNET`（NTP 校时）
+    - 存储权限（新旧兼容声明）：`READ_EXTERNAL_STORAGE` / `WRITE_EXTERNAL_STORAGE` / `READ_MEDIA_IMAGES` / `READ_MEDIA_VIDEO` / `READ_MEDIA_AUDIO`
   - 组件声明：
     - `MainActivity`
     - `AutoClickAccessibilityService`
@@ -32,6 +33,7 @@
   - 两个 Tab：`自动点击`、`关于`。
   - 默认首页：`自动点击`。
   - 在入口处初始化 `AutoClickCoordinator`，供页面和服务共享状态。
+  - 启动时运行时权限：应用 `onResume` 首次触发存储权限请求（按 Android 版本分支请求新旧权限），不添加额外业务提示文案。
 
 ## 4. 自动点击页面模块（AutoClickScreen）
 - 作用：提供自动点击配置、定时、运行控制与权限引导。
@@ -107,6 +109,8 @@
 - 关闭策略：关闭悬浮窗（含面板关闭按钮与主页面开关关闭）会回滚未保存改动，并从已保存配置重载动作列表。
 - 最小化策略：面板“关闭键”已改为最小化切换；最小化态仅保留竖排 `运行/最小化` 两个按钮，再次点击最小化可恢复完整面板。
 - 真正关闭策略：通过主页“动作悬浮窗开关”关闭服务时，回滚未保存改动并从已保存配置重载动作列表。
+  - 主题策略：主面板与点位气泡跟随系统深浅模式切换（Material3 `darkColorScheme/lightColorScheme` + 主题化颜色）。
+  - 尺寸策略：主面板内布局按 `FLOATING_PANEL_SCALE_FACTOR = 0.5` 缩放（按钮、列表、间距、圆角统一缩放）。
   - 拖动能力：面板拖动与点位拖动均支持边界约束，避免移动到屏幕外。
   - 点位编辑：长按点位弹出编辑窗口，支持调整坐标、延迟、触摸时长、重复次数。
   - 点位：支持多点拖拽、删除，顺序按添加顺序稳定显示。

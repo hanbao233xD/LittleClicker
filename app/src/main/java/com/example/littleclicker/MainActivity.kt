@@ -1,5 +1,8 @@
 package com.example.littleclicker
 
+import android.Manifest
+import android.content.pm.PackageManager
+import android.os.Build
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
@@ -11,6 +14,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.core.app.ActivityCompat
 import androidx.navigation.NavDestination.Companion.hierarchy
 import androidx.navigation.NavGraph.Companion.findStartDestination
 import androidx.navigation.compose.NavHost
@@ -20,6 +24,7 @@ import androidx.navigation.compose.rememberNavController
 import com.example.littleclicker.autoclick.AutoClickCoordinator
 import com.example.littleclicker.ui.AboutScreen
 import com.example.littleclicker.ui.AutoClickScreen
+import androidx.core.content.ContextCompat
 import top.yukonga.miuix.kmp.basic.NavigationBar
 import top.yukonga.miuix.kmp.basic.NavigationBarItem
 import top.yukonga.miuix.kmp.basic.Scaffold
@@ -28,6 +33,8 @@ import top.yukonga.miuix.kmp.theme.darkColorScheme
 import top.yukonga.miuix.kmp.theme.lightColorScheme
 
 class MainActivity : ComponentActivity() {
+    private var hasRequestedStoragePermission = false
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContent {
@@ -36,6 +43,51 @@ class MainActivity : ComponentActivity() {
                 AppRoot()
             }
         }
+    }
+
+    override fun onWindowFocusChanged(hasFocus: Boolean) {
+        super.onWindowFocusChanged(hasFocus)
+        if (!hasFocus || hasRequestedStoragePermission) return
+
+        hasRequestedStoragePermission = true
+        window.decorView.postDelayed(
+            { requestStoragePermissionsIfNeeded() },
+            500L
+        )
+    }
+
+    private fun requestStoragePermissionsIfNeeded() {
+        val permissions = when {
+            Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE -> arrayOf(
+                Manifest.permission.READ_MEDIA_IMAGES,
+                Manifest.permission.READ_MEDIA_VISUAL_USER_SELECTED
+            )
+            Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU -> arrayOf(
+                Manifest.permission.READ_MEDIA_IMAGES
+            )
+            else -> buildList {
+                add(Manifest.permission.READ_EXTERNAL_STORAGE)
+                if (Build.VERSION.SDK_INT <= Build.VERSION_CODES.P) {
+                    add(Manifest.permission.WRITE_EXTERNAL_STORAGE)
+                }
+            }.toTypedArray()
+        }
+
+        val missingPermissions = permissions.filter { permission ->
+            ContextCompat.checkSelfPermission(this, permission) != PackageManager.PERMISSION_GRANTED
+        }
+
+        if (missingPermissions.isNotEmpty()) {
+            ActivityCompat.requestPermissions(
+                this,
+                missingPermissions.toTypedArray(),
+                REQUEST_STORAGE_PERMISSIONS
+            )
+        }
+    }
+
+    companion object {
+        private const val REQUEST_STORAGE_PERMISSIONS = 10001
     }
 }
 

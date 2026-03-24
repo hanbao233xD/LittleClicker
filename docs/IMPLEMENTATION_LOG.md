@@ -260,3 +260,26 @@
 - 验证结果：
   - `./gradlew :app:assembleDebug` 通过。
   - `./gradlew :app:testDebugUnitTest` 通过。
+
+## 2026-03-24（主动作悬浮窗深浅模式 + 尺寸缩放）
+- `FloatingWindowService` 悬浮窗主面板与点位气泡改为跟随系统深浅模式：
+  - 根据 `isSystemInDarkTheme()` 选择 `Material3 darkColorScheme/lightColorScheme`；
+  - 面板、按钮、动作行、点位气泡颜色按主题分别取色，避免暗色模式下对比不足。
+- 主动作悬浮窗尺寸缩放：
+  - 新增 `FLOATING_PANEL_SCALE_FACTOR = 0.5f`；
+  - 面板内部布局尺寸（圆角、padding、按钮、动作列表区域、间距）统一按 `50%` 缩放。
+- 验证结果：
+  - `./gradlew :app:assembleDebug` 通过。
+  - `./gradlew :app:testDebugUnitTest` 通过。
+
+## 2026-03-24（启动即请求存储权限）
+- `MainActivity` 新增启动阶段存储权限请求：
+  - 应用打开后立即发起系统权限请求，不增加额外业务提示弹窗；
+  - 运行时按系统版本请求：
+    - Android 13+：`READ_MEDIA_IMAGES`、`READ_MEDIA_VIDEO`、`READ_MEDIA_AUDIO`
+    - Android 12 及以下：`READ_EXTERNAL_STORAGE`（Android 9 及以下同时请求 `WRITE_EXTERNAL_STORAGE`）
+  - 触发时机调整为 `onResume` 首次触发，避免部分机型在冷启动首帧阶段丢失权限弹窗。
+- `AndroidManifest.xml` 同步声明新旧存储权限（旧权限保留 `maxSdkVersion` 约束）。
+- 验证结果：
+  - `./gradlew :app:assembleDebug` 通过。
+  - `./gradlew :app:testDebugUnitTest` 通过。

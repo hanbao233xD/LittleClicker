@@ -20,6 +20,7 @@ import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -46,9 +47,10 @@ import androidx.compose.material.icons.filled.Stop
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
+import androidx.compose.material3.darkColorScheme
+import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -63,6 +65,7 @@ import androidx.compose.ui.input.pointer.positionChanged
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.ComposeView
 import androidx.compose.ui.platform.ViewCompositionStrategy
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
@@ -92,6 +95,8 @@ enum class FloatingWindowMode {
     Edit,
     Run,
 }
+
+private const val FLOATING_PANEL_SCALE_FACTOR = 0.5f
 
 class FloatingWindowService : LifecycleService() {
 
@@ -199,7 +204,8 @@ class FloatingWindowService : LifecycleService() {
     private fun createPanelOverlay() {
         val view = createComposeView().apply {
             setContent {
-                MaterialTheme {
+                val isDarkTheme = isSystemInDarkTheme()
+                MaterialTheme(colorScheme = if (isDarkTheme) darkColorScheme() else lightColorScheme()) {
                     val runtime by AutoClickCoordinator.runtime.collectAsState()
                     val recording by AutoClickCoordinator.recording.collectAsState()
                     val isPanelMinimized by panelMinimized.collectAsState()
@@ -279,7 +285,9 @@ class FloatingWindowService : LifecycleService() {
                                 "悬浮窗已恢复完整模式"
                             }
                             Toast.makeText(this@FloatingWindowService, tip, Toast.LENGTH_SHORT).show()
-                        }
+                        },
+                        isDarkTheme = isDarkTheme,
+                        scaleFactor = FLOATING_PANEL_SCALE_FACTOR
                     )
                 }
             }
@@ -326,7 +334,8 @@ class FloatingWindowService : LifecycleService() {
     private fun createPointOverlay(pointId: Int, center: IntOffset): PointOverlay {
         val view = createComposeView().apply {
             setContent {
-                MaterialTheme {
+                val isDarkTheme = isSystemInDarkTheme()
+                MaterialTheme(colorScheme = if (isDarkTheme) darkColorScheme() else lightColorScheme()) {
                     val profile by AutoClickCoordinator.profile.collectAsState()
                     val index = profile.points.indexOfFirst { it.id == pointId }
                     val point = profile.points.firstOrNull { it.id == pointId }
@@ -357,7 +366,8 @@ class FloatingWindowService : LifecycleService() {
                             },
                             onRemove = {
                                 AutoClickCoordinator.removePoint(point.id)
-                            }
+                            },
+                            isDarkTheme = isDarkTheme
                         )
                     }
                 }
@@ -806,9 +816,25 @@ private fun FloatingPanel(
     onEditPoint: (AutoClickPoint) -> Unit,
     onDeletePoint: (AutoClickPoint) -> Unit,
     onToggleMinimized: () -> Unit,
+    isDarkTheme: Boolean,
+    scaleFactor: Float,
 ) {
     val profile by AutoClickCoordinator.profile.collectAsState()
     val points = profile.points
+    val panelContainerColor = if (isDarkTheme) Color(0xE62A2D34) else Color(0xEFFFFAF2)
+    val panelHandleColor = if (isDarkTheme) Color(0xFF3A404D) else Color(0xFFE0E0E0)
+    val panelTitleColor = if (isDarkTheme) Color(0xFFE7ECF5) else Color(0xFF263238)
+    val listTitleColor = if (isDarkTheme) Color(0xFFD4DEEE) else Color(0xFF37474F)
+    val listHintColor = if (isDarkTheme) Color(0xFF9CAAC5) else Color(0xFF78909C)
+    val panelCorner = scaledDp(16.dp, scaleFactor)
+    val panelPadding = scaledDp(12.dp, scaleFactor)
+    val panelSpacing = scaledDp(8.dp, scaleFactor)
+    val sideButtonSpacing = scaledDp(8.dp, scaleFactor)
+    val rowSpacing = scaledDp(12.dp, scaleFactor)
+    val handleHeight = scaledDp(16.dp, scaleFactor)
+    val handleCorner = scaledDp(8.dp, scaleFactor)
+    val actionColumnWidth = scaledDp(220.dp, scaleFactor)
+    val actionListMaxHeight = scaledDp(220.dp, scaleFactor)
 
     if (isMinimized) {
         Card(
@@ -820,21 +846,25 @@ private fun FloatingPanel(
                         onDrag(IntOffset(dragAmount.x.roundToInt(), dragAmount.y.roundToInt()))
                     }
                 },
-            shape = RoundedCornerShape(16.dp),
-            colors = CardDefaults.cardColors(containerColor = Color(0xEFFFFAF2))
+            shape = RoundedCornerShape(panelCorner),
+            colors = CardDefaults.cardColors(containerColor = panelContainerColor)
         ) {
             Column(
-                modifier = Modifier.padding(10.dp),
-                verticalArrangement = Arrangement.spacedBy(8.dp),
+                modifier = Modifier.padding(scaledDp(10.dp, scaleFactor)),
+                verticalArrangement = Arrangement.spacedBy(panelSpacing),
                 horizontalAlignment = Alignment.CenterHorizontally
             ) {
                 PanelMiniButton(
                     text = "运行",
-                    onClick = onToggleRun
+                    onClick = onToggleRun,
+                    isDarkTheme = isDarkTheme,
+                    scaleFactor = scaleFactor
                 )
                 PanelMiniButton(
                     text = "最小化",
-                    onClick = onToggleMinimized
+                    onClick = onToggleMinimized,
+                    isDarkTheme = isDarkTheme,
+                    scaleFactor = scaleFactor
                 )
             }
         }
@@ -844,18 +874,18 @@ private fun FloatingPanel(
     Card(
         modifier = Modifier
             .onSizeChanged(onSizeChanged),
-        shape = RoundedCornerShape(16.dp),
-        colors = CardDefaults.cardColors(containerColor = Color(0xEFFFFAF2))
+        shape = RoundedCornerShape(panelCorner),
+        colors = CardDefaults.cardColors(containerColor = panelContainerColor)
     ) {
         Column(
-            modifier = Modifier.padding(12.dp),
-            verticalArrangement = Arrangement.spacedBy(8.dp)
+            modifier = Modifier.padding(panelPadding),
+            verticalArrangement = Arrangement.spacedBy(panelSpacing)
         ) {
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(16.dp)
-                    .background(Color(0xFFE0E0E0), RoundedCornerShape(8.dp))
+                    .height(handleHeight)
+                    .background(panelHandleColor, RoundedCornerShape(handleCorner))
                     .pointerInput(Unit) {
                         detectDragGestures { change, dragAmount ->
                             change.consume()
@@ -863,10 +893,14 @@ private fun FloatingPanel(
                         }
                     }
             )
-            Text(text = "定时点击器Ultra(拖动小白条移动位置)", color = Color(0xFF263238))
-            Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+            Text(
+                text = "定时点击器Ultra(拖动小白条移动位置)",
+                color = panelTitleColor,
+                style = MaterialTheme.typography.bodySmall
+            )
+            Row(horizontalArrangement = Arrangement.spacedBy(rowSpacing)) {
                 Column(
-                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                    verticalArrangement = Arrangement.spacedBy(sideButtonSpacing)
                 ) {
                     PanelActionButton(
                         icon = if (runState == AutoClickRunState.Running || runState == AutoClickRunState.Paused) {
@@ -879,56 +913,68 @@ private fun FloatingPanel(
                         } else {
                             "运行"
                         },
-                        onClick = onToggleRun
+                        onClick = onToggleRun,
+                        isDarkTheme = isDarkTheme,
+                        scaleFactor = scaleFactor
                     )
                     PanelActionButton(
                         label = if (isRecording) "停" else "录",
                         contentDescription = if (isRecording) "停止录制" else "录制",
-                        onClick = onToggleRecord
+                        onClick = onToggleRecord,
+                        isDarkTheme = isDarkTheme,
+                        scaleFactor = scaleFactor
                     )
                     PanelActionButton(
                         icon = Icons.Filled.Add,
                         contentDescription = "添加动作",
-                        onClick = onAddAction
+                        onClick = onAddAction,
+                        isDarkTheme = isDarkTheme,
+                        scaleFactor = scaleFactor
                     )
                     PanelActionButton(
                         icon = Icons.Filled.Delete,
                         contentDescription = "删除最新动作",
-                        onClick = onDeleteLatest
+                        onClick = onDeleteLatest,
+                        isDarkTheme = isDarkTheme,
+                        scaleFactor = scaleFactor
                     )
                     PanelActionButton(
                         icon = Icons.Filled.Save,
                         contentDescription = "保存",
-                        onClick = onSave
+                        onClick = onSave,
+                        isDarkTheme = isDarkTheme,
+                        scaleFactor = scaleFactor
                     )
                     PanelActionButton(
                         label = "缩",
                         contentDescription = "最小化",
-                        onClick = onToggleMinimized
+                        onClick = onToggleMinimized,
+                        isDarkTheme = isDarkTheme,
+                        scaleFactor = scaleFactor
                     )
                 }
 
                 Column(
-                    modifier = Modifier.width(220.dp),
-                    verticalArrangement = Arrangement.spacedBy(6.dp)
+                    modifier = Modifier.width(actionColumnWidth),
+                    verticalArrangement = Arrangement.spacedBy(scaledDp(6.dp, scaleFactor))
                 ) {
                     Text(
                         text = "动作列表（与画圈标签一致）",
-                        color = Color(0xFF37474F),
-                        style = MaterialTheme.typography.bodySmall
+                        color = listTitleColor,
+                        style = MaterialTheme.typography.labelSmall
                     )
                     if (points.isEmpty()) {
                         Text(
                             text = "暂无动作，点击左侧“添加”或“录制”开始",
-                            color = Color(0xFF78909C),
-                            style = MaterialTheme.typography.bodySmall
+                            color = listHintColor,
+                            style = MaterialTheme.typography.labelSmall
                         )
                     } else {
                         LazyColumn(
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .heightIn(max = 220.dp),
-                            verticalArrangement = Arrangement.spacedBy(6.dp)
+                                .heightIn(max = actionListMaxHeight),
+                            verticalArrangement = Arrangement.spacedBy(scaledDp(6.dp, scaleFactor))
                         ) {
                             itemsIndexed(
                                 items = points,
@@ -938,7 +984,9 @@ private fun FloatingPanel(
                                     label = "${index + 1}.${point.actionType.displayName}",
                                     actionType = point.actionType,
                                     onEdit = { onEditPoint(point) },
-                                    onDelete = { onDeletePoint(point) }
+                                    onDelete = { onDeletePoint(point) },
+                                    isDarkTheme = isDarkTheme,
+                                    scaleFactor = scaleFactor
                                 )
                             }
                         }
@@ -953,20 +1001,29 @@ private fun FloatingPanel(
 private fun PanelMiniButton(
     text: String,
     onClick: () -> Unit,
+    isDarkTheme: Boolean,
+    scaleFactor: Float,
 ) {
+    val backgroundColor = if (isDarkTheme) Color(0xFF2D3542) else Color(0xFFF5F5F5)
+    val borderColor = if (isDarkTheme) Color(0xFF4A5568) else Color(0xFFE0E0E0)
+    val textColor = if (isDarkTheme) Color(0xFFE2E8F0) else Color(0xFF37474F)
+    val buttonWidth = scaledDp(72.dp, scaleFactor)
+    val buttonHeight = scaledDp(36.dp, scaleFactor)
+    val corner = scaledDp(18.dp, scaleFactor)
+
     Box(
         modifier = Modifier
-            .width(72.dp)
-            .height(36.dp)
-            .background(Color(0xFFF5F5F5), RoundedCornerShape(18.dp))
-            .border(1.dp, Color(0xFFE0E0E0), RoundedCornerShape(18.dp))
+            .width(buttonWidth)
+            .height(buttonHeight)
+            .background(backgroundColor, RoundedCornerShape(corner))
+            .border(1.dp, borderColor, RoundedCornerShape(corner))
             .clickable(onClick = onClick),
         contentAlignment = Alignment.Center
     ) {
         Text(
             text = text,
-            color = Color(0xFF37474F),
-            style = MaterialTheme.typography.bodyMedium
+            color = textColor,
+            style = MaterialTheme.typography.labelSmall
         )
     }
 }
@@ -978,7 +1035,12 @@ private fun TargetBubble(
     onDragEnd: () -> Unit,
     onLongPress: () -> Unit,
     onRemove: () -> Unit,
+    isDarkTheme: Boolean,
 ) {
+    val bubbleFillColor = if (isDarkTheme) Color(0xCC4D84FF) else Color(0xCC1976D2)
+    val bubbleBorderColor = if (isDarkTheme) Color(0xFFDDE7FF) else Color.White
+    val removeFillColor = if (isDarkTheme) Color(0xCCE35D5B) else Color(0xCCB00020)
+
     Box(
         modifier = Modifier
             .size(76.dp)
@@ -998,8 +1060,8 @@ private fun TargetBubble(
             modifier = Modifier
                 .align(Alignment.Center)
                 .size(68.dp)
-                .background(Color(0xCC1976D2), CircleShape)
-                .border(2.dp, Color.White, CircleShape),
+                .background(bubbleFillColor, CircleShape)
+                .border(2.dp, bubbleBorderColor, CircleShape),
             contentAlignment = Alignment.Center
         ) {
             Text(
@@ -1012,8 +1074,8 @@ private fun TargetBubble(
             modifier = Modifier
                 .align(Alignment.TopEnd)
                 .size(20.dp)
-                .background(Color(0xCCB00020), CircleShape)
-                .border(1.dp, Color.White, CircleShape)
+                .background(removeFillColor, CircleShape)
+                .border(1.dp, bubbleBorderColor, CircleShape)
                 .clickable(onClick = onRemove),
             contentAlignment = Alignment.Center
         ) {
@@ -1028,18 +1090,26 @@ private fun ActionItemRow(
     actionType: AutoClickActionType,
     onEdit: () -> Unit,
     onDelete: () -> Unit,
+    isDarkTheme: Boolean,
+    scaleFactor: Float,
 ) {
+    val rowBgColor = if (isDarkTheme) Color(0xFF242B37) else Color(0xFFF7FAFC)
+    val rowTextColor = if (isDarkTheme) Color(0xFFE6EDF8) else Color(0xFF263238)
+    val iconTintColor = if (isDarkTheme) Color(0xFF9FB2CC) else Color(0xFF455A64)
+    val buttonSize = scaledDp(28.dp, scaleFactor).coerceAtLeast(14.dp)
+    val iconSize = scaledDp(16.dp, scaleFactor).coerceAtLeast(10.dp)
+
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .background(Color(0xFFF7FAFC), RoundedCornerShape(10.dp))
-            .padding(horizontal = 8.dp, vertical = 6.dp),
+            .background(rowBgColor, RoundedCornerShape(scaledDp(10.dp, scaleFactor)))
+            .padding(horizontal = scaledDp(8.dp, scaleFactor), vertical = scaledDp(6.dp, scaleFactor)),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.SpaceBetween
     ) {
         Row(
             verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(6.dp)
+            horizontalArrangement = Arrangement.spacedBy(scaledDp(6.dp, scaleFactor))
         ) {
             Icon(
                 imageVector = if (actionType == AutoClickActionType.Click) {
@@ -1048,20 +1118,41 @@ private fun ActionItemRow(
                     Icons.Filled.PlayArrow
                 },
                 contentDescription = null,
-                tint = Color(0xFF455A64)
+                tint = iconTintColor,
+                modifier = Modifier.size(iconSize)
             )
             Text(
                 text = label,
-                style = MaterialTheme.typography.bodySmall,
-                color = Color(0xFF263238)
+                style = MaterialTheme.typography.labelSmall,
+                color = rowTextColor
             )
         }
-        Row(horizontalArrangement = Arrangement.spacedBy(2.dp)) {
-            IconButton(onClick = onEdit, modifier = Modifier.size(28.dp)) {
-                Icon(Icons.Filled.Edit, contentDescription = "编辑", tint = Color(0xFF1976D2))
+        Row(horizontalArrangement = Arrangement.spacedBy(scaledDp(2.dp, scaleFactor))) {
+            Box(
+                modifier = Modifier
+                    .size(buttonSize)
+                    .clickable(onClick = onEdit),
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(
+                    imageVector = Icons.Filled.Edit,
+                    contentDescription = "编辑",
+                    tint = if (isDarkTheme) Color(0xFF73B7FF) else Color(0xFF1976D2),
+                    modifier = Modifier.size(iconSize)
+                )
             }
-            IconButton(onClick = onDelete, modifier = Modifier.size(28.dp)) {
-                Icon(Icons.Filled.Delete, contentDescription = "删除", tint = Color(0xFFB00020))
+            Box(
+                modifier = Modifier
+                    .size(buttonSize)
+                    .clickable(onClick = onDelete),
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(
+                    imageVector = Icons.Filled.Delete,
+                    contentDescription = "删除",
+                    tint = if (isDarkTheme) Color(0xFFFF8A80) else Color(0xFFB00020),
+                    modifier = Modifier.size(iconSize)
+                )
             }
         }
     }
@@ -1073,28 +1164,40 @@ private fun PanelActionButton(
     label: String? = null,
     contentDescription: String,
     onClick: () -> Unit,
+    isDarkTheme: Boolean,
+    scaleFactor: Float,
 ) {
+    val backgroundColor = if (isDarkTheme) Color(0xFF2D3542) else Color(0xFFF5F5F5)
+    val borderColor = if (isDarkTheme) Color(0xFF4A5568) else Color(0xFFE0E0E0)
+    val contentColor = if (isDarkTheme) Color(0xFFE2E8F0) else Color(0xFF37474F)
+    val buttonSize = scaledDp(42.dp, scaleFactor)
+    val iconSize = scaledDp(22.dp, scaleFactor).coerceAtLeast(12.dp)
+
     Box(
         modifier = Modifier
-            .size(42.dp)
-            .background(Color(0xFFF5F5F5), CircleShape)
-            .border(1.dp, Color(0xFFE0E0E0), CircleShape),
+            .size(buttonSize)
+            .background(backgroundColor, CircleShape)
+            .border(1.dp, borderColor, CircleShape)
+            .clickable(onClick = onClick),
         contentAlignment = Alignment.Center
     ) {
-        IconButton(onClick = onClick) {
-            if (label != null) {
-                Text(
-                    text = label,
-                    color = Color(0xFF37474F),
-                    style = MaterialTheme.typography.titleMedium
-                )
-            } else {
-                Icon(
-                    imageVector = icon ?: Icons.Filled.PlayArrow,
-                    contentDescription = contentDescription,
-                    tint = Color(0xFF37474F)
-                )
-            }
+        if (label != null) {
+            Text(
+                text = label,
+                color = contentColor,
+                style = MaterialTheme.typography.bodySmall
+            )
+        } else {
+            Icon(
+                imageVector = icon ?: Icons.Filled.PlayArrow,
+                contentDescription = contentDescription,
+                tint = contentColor,
+                modifier = Modifier.size(iconSize)
+            )
         }
     }
+}
+
+private fun scaledDp(size: Dp, scaleFactor: Float): Dp {
+    return (size.value * scaleFactor).dp
 }
