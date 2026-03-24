@@ -237,3 +237,16 @@
 - 实现位置：
   - `UiHelpers.ensureOverlayStartPermissions(context)` 新增统一检查与引导逻辑；
   - `AutoClickScreen` 的动作悬浮窗开关与定时悬浮窗开关均接入该逻辑。
+
+## 2026-03-24（深色模式适配）
+- 自动点击页（`AutoClickScreen`）适配深色模式：
+  - 页面背景渐变改为深浅模式动态配色；
+  - 卡片容器统一改为主题色 `surfaceContainer`，不再硬编码白底；
+  - 成功态/强调文案颜色改为深浅模式可读配色，解决暗色下浅底白字对比不足问题；
+  - 定时大时钟容器在暗色模式切换为深色底，保持文字可读性。
+- 配置管理页（`ConfigManageScreen`）同步适配：
+  - 页面背景、卡片底色、激活配置高亮与“当前使用中”状态色均支持深浅模式。
+- 定时悬浮窗（`TimerFloatingWindowService`）主题跟随系统深浅模式，保留灰色半透明风格并调整边框对比度。
+- 验证结果：
+  - `./gradlew :app:assembleDebug` 通过。
+  - `./gradlew :app:testDebugUnitTest` 通过。

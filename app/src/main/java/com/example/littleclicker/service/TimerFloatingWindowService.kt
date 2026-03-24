@@ -12,6 +12,7 @@ import android.widget.Toast
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.gestures.detectDragGestures
+import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.widthIn
@@ -45,6 +46,7 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlin.math.roundToInt
 import top.yukonga.miuix.kmp.basic.Text
 import top.yukonga.miuix.kmp.theme.MiuixTheme
+import top.yukonga.miuix.kmp.theme.darkColorScheme
 import top.yukonga.miuix.kmp.theme.lightColorScheme
 
 class TimerFloatingWindowService : LifecycleService() {
@@ -98,7 +100,11 @@ class TimerFloatingWindowService : LifecycleService() {
         windowManager = getSystemService(WINDOW_SERVICE) as WindowManager
         val view = createComposeView().apply {
             setContent {
-                MiuixTheme(colors = lightColorScheme()) {
+                val isDarkTheme = isSystemInDarkTheme()
+                val overlayBgColor = if (isDarkTheme) Color(0xA6434343) else Color(0xAA707070)
+                val overlayBorderColor = if (isDarkTheme) Color(0x80BDBDBD) else Color(0x80E0E0E0)
+
+                MiuixTheme(colors = if (isDarkTheme) darkColorScheme() else lightColorScheme()) {
                     val profile by AutoClickCoordinator.profile.collectAsState()
                     val runtime by AutoClickCoordinator.runtime.collectAsState()
                     val nowMillis by produceState(initialValue = AutoClickCoordinator.currentAlignedNowMillis()) {
@@ -122,8 +128,8 @@ class TimerFloatingWindowService : LifecycleService() {
                                 updateOverlayOffset(overlayOffset)
                             }
                             .widthIn(min = 320.dp, max = 680.dp)
-                            .background(Color(0xA6434343), RoundedCornerShape(12.dp))
-                            .border(1.dp, Color(0x80BDBDBD), RoundedCornerShape(12.dp))
+                            .background(overlayBgColor, RoundedCornerShape(12.dp))
+                            .border(1.dp, overlayBorderColor, RoundedCornerShape(12.dp))
                             .pointerInput(Unit) {
                                 detectDragGestures { change, dragAmount ->
                                     change.consume()

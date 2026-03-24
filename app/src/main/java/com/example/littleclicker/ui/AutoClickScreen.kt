@@ -4,13 +4,13 @@ import android.app.AlertDialog
 import android.content.Context
 import android.content.Intent
 import android.provider.Settings
-import android.text.Spanned
 import android.text.InputType
 import android.widget.EditText
 import android.widget.LinearLayout
 import android.widget.NumberPicker
 import android.widget.Toast
 import androidx.compose.foundation.background
+import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
@@ -90,6 +90,15 @@ internal fun AutoClickScreen(innerPadding: PaddingValues) {
     val timerOverlayEnabled by TimerFloatingWindowService.overlayVisible.collectAsState()
     val runtime by AutoClickCoordinator.runtime.collectAsState()
     val timeSync by AutoClickCoordinator.timeSync.collectAsState()
+    val isDarkTheme = isSystemInDarkTheme()
+    val pageGradient = if (isDarkTheme) {
+        listOf(Color(0xFF101219), Color(0xFF171B26))
+    } else {
+        listOf(Color(0xFFF5F6FA), Color(0xFFEFF3FF))
+    }
+    val cardContainerColor = MiuixTheme.colorScheme.surfaceContainer
+    val successColor = if (isDarkTheme) Color(0xFF7AD7A1) else Color(0xFF1F8B4C)
+    val accentColor = if (isDarkTheme) Color(0xFF78B7FF) else Color(0xFF1D6ED8)
 
     val nowAlignedMillis by produceState(initialValue = AutoClickCoordinator.currentAlignedNowMillis()) {
         while (true) {
@@ -150,7 +159,7 @@ internal fun AutoClickScreen(innerPadding: PaddingValues) {
             .fillMaxSize()
             .background(
                 brush = Brush.verticalGradient(
-                    colors = listOf(Color(0xFFF5F6FA), Color(0xFFEFF3FF))
+                    colors = pageGradient
                 )
             )
             .padding(innerPadding)
@@ -179,7 +188,10 @@ internal fun AutoClickScreen(innerPadding: PaddingValues) {
                 Spacer(modifier = Modifier.height(6.dp))
                 Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                     pendingStatuses.forEach { status ->
-                        PermissionCard(status = status)
+                        PermissionCard(
+                            status = status,
+                            isDarkTheme = isDarkTheme
+                        )
                     }
                 }
             } else {
@@ -190,7 +202,7 @@ internal fun AutoClickScreen(innerPadding: PaddingValues) {
                     )
                     Text(
                         text = "权限已就绪，准备开始点击",
-                        color = Color(0xFF1F8B4C)
+                        color = successColor
                     )
                 }
             }
@@ -201,7 +213,7 @@ internal fun AutoClickScreen(innerPadding: PaddingValues) {
                 modifier = Modifier.fillMaxWidth(),
                 cornerRadius = 20.dp,
                 colors = CardDefaults.defaultColors(
-                    color = Color.White,
+                    color = cardContainerColor,
                     contentColor = MiuixTheme.colorScheme.onSurfaceContainer
                 )
             ) {
@@ -321,7 +333,9 @@ internal fun AutoClickScreen(innerPadding: PaddingValues) {
                             Toast.makeText(context, "NTP服务器已更新：$host", Toast.LENGTH_SHORT).show()
                         }
                     )
-                }
+                },
+                isDarkTheme = isDarkTheme,
+                cardContainerColor = cardContainerColor
             )
         }
 
@@ -330,7 +344,7 @@ internal fun AutoClickScreen(innerPadding: PaddingValues) {
                 modifier = Modifier.fillMaxWidth(),
                 cornerRadius = 20.dp,
                 colors = CardDefaults.defaultColors(
-                    color = Color.White,
+                    color = cardContainerColor,
                     contentColor = MiuixTheme.colorScheme.onSurfaceContainer
                 )
             ) {
@@ -381,12 +395,12 @@ internal fun AutoClickScreen(innerPadding: PaddingValues) {
             items(profile.points, key = { it.id }) { point ->
                 Card(
                     modifier = Modifier.fillMaxWidth(),
-                    cornerRadius = 20.dp,
-                    colors = CardDefaults.defaultColors(
-                        color = Color.White,
-                        contentColor = MiuixTheme.colorScheme.onSurfaceContainer
-                    )
-                ) {
+                cornerRadius = 20.dp,
+                colors = CardDefaults.defaultColors(
+                    color = cardContainerColor,
+                    contentColor = MiuixTheme.colorScheme.onSurfaceContainer
+                )
+            ) {
                     Column(
                         modifier = Modifier
                             .fillMaxWidth()
@@ -408,7 +422,7 @@ internal fun AutoClickScreen(innerPadding: PaddingValues) {
                         )
                         Text(
                             text = "编辑方式：长按动作悬浮窗中的对应点击点",
-                            color = Color(0xFF1D6ED8)
+                            color = accentColor
                         )
                     }
                 }
@@ -431,6 +445,8 @@ private fun TimerCard(
     onPickTime: () -> Unit,
     onToggleTimerOverlay: () -> Unit,
     onConfigNtp: () -> Unit,
+    isDarkTheme: Boolean,
+    cardContainerColor: Color,
 ) {
     val nowHms = formatHms(nowAlignedMillis)
     val tenths = (nowAlignedMillis % 1000L + 1000L) % 1000L / 100L
@@ -443,7 +459,7 @@ private fun TimerCard(
         modifier = Modifier.fillMaxWidth(),
         cornerRadius = 20.dp,
         colors = CardDefaults.defaultColors(
-            color = Color.White,
+            color = cardContainerColor,
             contentColor = MiuixTheme.colorScheme.onSurfaceContainer
         )
     ) {
@@ -462,7 +478,7 @@ private fun TimerCard(
                 modifier = Modifier.fillMaxWidth(),
                 cornerRadius = 16.dp,
                 colors = CardDefaults.defaultColors(
-                    color = Color(0xFFF6F8FC),
+                    color = if (isDarkTheme) Color(0xFF252B36) else Color(0xFFF6F8FC),
                     contentColor = MiuixTheme.colorScheme.onSurfaceContainer
                 )
             ) {
@@ -627,12 +643,18 @@ private fun Context.loadRandomAutoClickTip(): String {
 }
 
 @Composable
-private fun PermissionCard(status: PermissionStatus) {
+private fun PermissionCard(
+    status: PermissionStatus,
+    isDarkTheme: Boolean,
+) {
+    val grantedBgColor = if (isDarkTheme) Color(0xFF1B2E24) else Color(0xFFE7F6EC)
+    val defaultBgColor = MiuixTheme.colorScheme.surfaceContainer
+    val grantedTextColor = if (isDarkTheme) Color(0xFF7AD7A1) else Color(0xFF1F8B4C)
     Card(
         modifier = Modifier.fillMaxWidth(),
         cornerRadius = 20.dp,
         colors = CardDefaults.defaultColors(
-            color = if (status.granted) Color(0xFFE7F6EC) else Color.White,
+            color = if (status.granted) grantedBgColor else defaultBgColor,
             contentColor = MiuixTheme.colorScheme.onSurfaceContainer
         ),
         onClick = status.onClick,
@@ -653,7 +675,7 @@ private fun PermissionCard(status: PermissionStatus) {
             Spacer(modifier = Modifier.width(12.dp))
             Text(
                 text = if (status.granted) "已授权" else "去授权",
-                color = if (status.granted) Color(0xFF1F8B4C) else MiuixTheme.colorScheme.primary,
+                color = if (status.granted) grantedTextColor else MiuixTheme.colorScheme.primary,
                 fontWeight = FontWeight.Bold
             )
         }

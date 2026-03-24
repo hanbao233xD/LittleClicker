@@ -2,6 +2,7 @@ package com.example.littleclicker.ui
 
 import android.widget.Toast
 import androidx.compose.foundation.background
+import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -46,6 +47,15 @@ internal fun ConfigManageScreen(onBack: () -> Unit) {
 
     val profile by AutoClickCoordinator.profile.collectAsState()
     val profiles by AutoClickCoordinator.profiles.collectAsState()
+    val isDarkTheme = isSystemInDarkTheme()
+    val pageGradient = if (isDarkTheme) {
+        listOf(Color(0xFF101219), Color(0xFF171B26))
+    } else {
+        listOf(Color(0xFFF7F9FF), Color(0xFFF1F5FF))
+    }
+    val cardContainerColor = MiuixTheme.colorScheme.surfaceContainer
+    val activeCardColor = if (isDarkTheme) Color(0xFF1F2A3B) else Color(0xFFEAF2FF)
+    val successColor = if (isDarkTheme) Color(0xFF7AD7A1) else Color(0xFF1F8B4C)
     var saveAsName by remember { mutableStateOf("") }
     var pendingDeleteId by remember { mutableStateOf<String?>(null) }
 
@@ -65,7 +75,7 @@ internal fun ConfigManageScreen(onBack: () -> Unit) {
             .fillMaxSize()
             .background(
                 brush = Brush.verticalGradient(
-                    colors = listOf(Color(0xFFF7F9FF), Color(0xFFF1F5FF))
+                    colors = pageGradient
                 )
             )
             .padding(16.dp),
@@ -94,7 +104,7 @@ internal fun ConfigManageScreen(onBack: () -> Unit) {
                 modifier = Modifier.fillMaxWidth(),
                 cornerRadius = 20.dp,
                 colors = CardDefaults.defaultColors(
-                    color = Color.White,
+                    color = cardContainerColor,
                     contentColor = MiuixTheme.colorScheme.onSurfaceContainer
                 )
             ) {
@@ -146,7 +156,7 @@ internal fun ConfigManageScreen(onBack: () -> Unit) {
                 modifier = Modifier.fillMaxWidth(),
                 cornerRadius = 20.dp,
                 colors = CardDefaults.defaultColors(
-                    color = Color.White,
+                    color = cardContainerColor,
                     contentColor = MiuixTheme.colorScheme.onSurfaceContainer
                 )
             ) {
@@ -209,7 +219,7 @@ internal fun ConfigManageScreen(onBack: () -> Unit) {
                     modifier = Modifier.fillMaxWidth(),
                     cornerRadius = 20.dp,
                     colors = CardDefaults.defaultColors(
-                        color = if (isActive) Color(0xFFEAF2FF) else Color.White,
+                        color = if (isActive) activeCardColor else cardContainerColor,
                         contentColor = MiuixTheme.colorScheme.onSurfaceContainer
                     )
                 ) {
@@ -236,7 +246,7 @@ internal fun ConfigManageScreen(onBack: () -> Unit) {
                         ) {
                             Text(
                                 text = if (isActive) "当前使用中" else "未加载",
-                                color = if (isActive) Color(0xFF1F8B4C) else MiuixTheme.colorScheme.onBackgroundVariant
+                                color = if (isActive) successColor else MiuixTheme.colorScheme.onBackgroundVariant
                             )
                             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                                 Button(
