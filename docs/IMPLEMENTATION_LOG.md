@@ -394,3 +394,13 @@
     - 服务连接时同步设置 `AccessibilityServiceInfo.FLAG_REQUEST_FILTER_KEY_EVENTS`，提升机型兼容性。
 - 验证结果：
   - `./gradlew :app:assembleDebug --no-daemon` 通过。
+
+## 2026-03-25（音量下强制停止修复：补全按键过滤能力声明）
+- 修复原因：
+  - 部分系统上仅设置 `flagRequestFilterKeyEvents` 不足以接收按键事件；
+  - 需要在无障碍配置中显式声明 `canRequestFilterKeyEvents="true"`。
+- 修复内容：
+  - `accessibility_service_config.xml` 新增：
+    - `android:canRequestFilterKeyEvents="true"`
+- 验证结果：
+  - `./gradlew :app:assembleDebug --no-daemon` 通过。

@@ -6,6 +6,7 @@ import android.accessibilityservice.GestureDescription
 import android.graphics.Path
 import android.view.KeyEvent
 import android.view.accessibility.AccessibilityEvent
+import android.widget.Toast
 import com.example.littleclicker.autoclick.AutoClickActionType
 import com.example.littleclicker.autoclick.AutoClickCoordinator
 import com.example.littleclicker.autoclick.AutoClickPoint
@@ -63,6 +64,7 @@ class AutoClickAccessibilityService : AccessibilityService() {
             state = AutoClickRunState.Idle,
             message = "检测到音量下键，已强制停止"
         )
+        Toast.makeText(this, "已停止", Toast.LENGTH_SHORT).show()
         return true
     }
 
