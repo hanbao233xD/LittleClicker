@@ -359,3 +359,12 @@
   - 保存后立即刷新列表展示。
 - 验证结果：
   - `./gradlew :app:assembleDebug --no-daemon` 通过。
+
+## 2026-03-24（应用图标替换为 icon.jpg）
+- 将项目根目录 `icon.jpg` 拷贝到应用资源目录：
+  - `app/src/main/res/drawable/icon.jpg`
+- `AndroidManifest.xml` 图标引用更新：
+  - `android:icon` 从 `@mipmap/ic_launcher` 改为 `@drawable/icon`
+  - `android:roundIcon` 从 `@mipmap/ic_launcher_round` 改为 `@drawable/icon`
+- 验证结果：
+  - `./gradlew :app:assembleDebug --no-daemon` 通过。
