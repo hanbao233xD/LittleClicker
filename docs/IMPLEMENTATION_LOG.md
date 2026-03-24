@@ -283,3 +283,79 @@
 - 验证结果：
   - `./gradlew :app:assembleDebug` 通过。
   - `./gradlew :app:testDebugUnitTest` 通过。
+
+## 2026-03-24（主动作悬浮窗横向收窄 + 文本单行自适应）
+- 主动作悬浮窗完整态横向长度收窄：
+  - 保持整体缩放系数 `FLOATING_PANEL_SCALE_FACTOR = 1f`；
+  - 新增横向专用缩放 `FLOATING_PANEL_HORIZONTAL_SCALE_FACTOR = 0.5f`；
+  - 对完整态面板的横向关键尺寸（内边距、左右区间距、动作列表列宽）按 50% 缩放，降低横向占用。
+- 悬浮窗文本显示策略调整：
+  - 新增 `AutoResizeSingleLineText`，统一用于面板标题、动作列表标题、空态提示、动作项名称等文本；
+  - 文本强制单行显示，显示不下时自动逐步缩小字号（到最小阈值）并启用省略号，避免换行挤压布局。
+- 验证结果：
+  - `./gradlew :app:assembleDebug --no-daemon` 通过。
+
+## 2026-03-24（主动作悬浮窗极简按钮列 + 滑动双端点可视编辑）
+- 主动作悬浮窗完整态改为极简结构：
+  - 仅保留左侧竖排按钮列（运行/录制/添加/删除最新/保存/最小化）；
+  - 保留顶部“小白条”作为拖动区域；
+  - 移除右侧动作列表区域，降低遮挡。
+- 点击点悬浮气泡缩放：
+  - 点位气泡尺寸统一缩小到原来的 50%（`POINT_BUBBLE_SCALE_FACTOR = 0.5f`）。
+- 滑动动作点位可视编辑升级：
+  - 滑动动作不再只有单点；改为起点与终点两个独立可拖动气泡；
+  - 文案显示为 `n.滑动(起)` 与 `n.滑动(终)`；
+  - 新增蓝色细线实时连接起点与终点；
+  - 拖动起点仅更新 `x/y`，拖动终点仅更新 `endX/endY`，用于精确编辑滑动路径。
+- 验证结果：
+  - `./gradlew :app:assembleDebug --no-daemon` 通过。
+
+## 2026-03-24（点位标签精简 + 气泡尺寸上调）
+- 点位标签样式调整：
+  - 点击动作中心文本仅显示序号数字（如 `2`）；
+  - 滑动动作改为 `2起` / `2终` 两个端点标识。
+- 点位气泡尺寸调整：
+  - 在“已改为半尺寸”基础上上调为原始尺寸的 `75%`（`POINT_BUBBLE_SCALE_FACTOR = 0.75f`）。
+- 验证结果：
+  - `./gradlew :app:assembleDebug --no-daemon` 通过。
+
+## 2026-03-24（点位文字居中与铺满原点）
+- 点位气泡文字排版优化：
+  - 文本改为强制居中（`TextAlign.Center`），确保 `2 / 2起 / 2终` 在圆心视觉居中；
+  - 气泡文本改为“超大基准字号 + 自动收缩到刚好可显示”，使文字尽量铺满原点；
+  - 文本内边距进一步缩小，减少空白边距。
+- 自适应精度调整：
+  - 自动缩字号步进由 `0.5sp` 调整为 `0.25sp`，匹配更贴边的铺满效果。
+- 验证结果：
+  - `./gradlew :app:assembleDebug --no-daemon` 通过。
+
+## 2026-03-24（点位文字缩放判定修复）
+- 修复点位圆心文本未正确缩放导致出现 `...` 的问题：
+  - `AutoResizeSingleLineText` 溢出检测从 `didOverflowWidth` 改为 `hasVisualOverflow`，确保在真实可视溢出时继续缩字号；
+  - 为点位文本增加 `overflow` 参数并在气泡中使用 `TextOverflow.Clip`，避免圆心出现省略号；
+  - 点位文本最小字号下限下调为 `5sp`，保证 `2 / 2起 / 2终` 在小气泡里仍可完整显示。
+- 验证结果：
+  - `./gradlew :app:assembleDebug --no-daemon` 通过。
+
+## 2026-03-24（移除最小化功能，恢复关闭X）
+- `FloatingWindowService` 移除最小化逻辑：
+  - 删除 `panelMinimized` 状态与最小化 UI 分支；
+  - 删除 `FloatingWindowMode` 与 `setMode/mode` 对外状态流。
+- 主面板末位按钮改回关闭行为：
+  - 末位按钮由“最小化（缩）”改为 `X` 图标；
+  - 点击后执行关闭服务（并回滚未保存改动），Toast 提示“动作悬浮窗已关闭”。
+- 首页配置同步清理：
+  - 移除“悬浮窗模式（编辑/运行）”下拉与相关文案，避免展示已删除功能。
+- 验证结果：
+  - `./gradlew :app:assembleDebug --no-daemon` 通过。
+
+## 2026-03-24（主页点击点列表支持编辑与删除）
+- `AutoClickScreen` 的“点击点列表”新增两个操作按钮：
+  - `编辑点击点`：在主页直接弹出编辑窗口，复用现有点位更新逻辑（`AutoClickCoordinator.updatePointConfig`）；
+  - `删除点击点`：直接调用 `AutoClickCoordinator.removePoint(pointId)` 并提示结果。
+- 编辑窗口能力：
+  - 支持修改中心坐标、延迟、触摸时长、重复次数；
+  - 对滑动动作额外支持终点坐标（`endX/endY`）编辑；
+  - 保存后立即刷新列表展示。
+- 验证结果：
+  - `./gradlew :app:assembleDebug --no-daemon` 通过。

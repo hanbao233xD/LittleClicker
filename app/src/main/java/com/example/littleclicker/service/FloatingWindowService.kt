@@ -13,6 +13,7 @@ import android.view.WindowManager
 import android.widget.EditText
 import android.widget.LinearLayout
 import android.widget.Toast
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -39,6 +40,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.AddCircleOutline
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.PlayArrow
@@ -54,8 +56,11 @@ import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
@@ -65,10 +70,15 @@ import androidx.compose.ui.input.pointer.positionChanged
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.ComposeView
 import androidx.compose.ui.platform.ViewCompositionStrategy
+import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.IntSize
+import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleRegistry
 import androidx.lifecycle.LifecycleService
@@ -89,14 +99,12 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import kotlin.math.hypot
+import kotlin.math.max
+import kotlin.math.min
 import kotlin.math.roundToInt
 
-enum class FloatingWindowMode {
-    Edit,
-    Run,
-}
-
 private const val FLOATING_PANEL_SCALE_FACTOR = 1f
+private const val POINT_BUBBLE_SCALE_FACTOR = 0.75f
 
 class FloatingWindowService : LifecycleService() {
 
@@ -109,15 +117,14 @@ class FloatingWindowService : LifecycleService() {
     private var panelSize: IntSize = IntSize.Zero
     private var panelOffset: IntOffset = IntOffset(72, 180)
 
-    private val pointViews = linkedMapOf<Int, PointOverlay>()
-    private val panelMinimized = MutableStateFlow(false)
+    private val pointViews = linkedMapOf<Int, PointOverlayGroup>()
     private var profileCollectJob: Job? = null
     private var runtimeCollectJob: Job? = null
     private var recordingCollectJob: Job? = null
     private var pointEditDialog: AlertDialog? = null
 
     private val bubbleSizePx by lazy {
-        (76f * resources.displayMetrics.density).roundToInt()
+        (76f * POINT_BUBBLE_SCALE_FACTOR * resources.displayMetrics.density).roundToInt()
     }
     private val bubbleHalfPx: Int
         get() = bubbleSizePx / 2
@@ -138,10 +145,7 @@ class FloatingWindowService : LifecycleService() {
                 return Service.START_NOT_STICKY
             }
 
-            ACTION_START, null -> {
-                panelMinimized.value = preferredMode.value == FloatingWindowMode.Run
-                showOverlayIfNeeded()
-            }
+            ACTION_START, null -> showOverlayIfNeeded()
             else -> showOverlayIfNeeded()
         }
         return Service.START_STICKY
@@ -208,12 +212,10 @@ class FloatingWindowService : LifecycleService() {
                 MaterialTheme(colorScheme = if (isDarkTheme) darkColorScheme() else lightColorScheme()) {
                     val runtime by AutoClickCoordinator.runtime.collectAsState()
                     val recording by AutoClickCoordinator.recording.collectAsState()
-                    val isPanelMinimized by panelMinimized.collectAsState()
                     FloatingPanel(
                         runState = runtime.state,
                         runMessage = runtime.message,
                         isRecording = recording.isRecording,
-                        isMinimized = isPanelMinimized,
                         onSizeChanged = { size ->
                             panelSize = size
                             updatePanelOffset(panelOffset)
@@ -276,15 +278,10 @@ class FloatingWindowService : LifecycleService() {
                             AutoClickCoordinator.removePoint(point.id)
                             Toast.makeText(this@FloatingWindowService, "已删除动作 #${point.id}", Toast.LENGTH_SHORT).show()
                         },
-                        onToggleMinimized = {
-                            val minimized = !panelMinimized.value
-                            panelMinimized.value = minimized
-                            val tip = if (minimized) {
-                                "悬浮窗已最小化"
-                            } else {
-                                "悬浮窗已恢复完整模式"
-                            }
-                            Toast.makeText(this@FloatingWindowService, tip, Toast.LENGTH_SHORT).show()
+                        onClosePanel = {
+                            AutoClickCoordinator.discardUnsavedChanges()
+                            Toast.makeText(this@FloatingWindowService, "动作悬浮窗已关闭", Toast.LENGTH_SHORT).show()
+                            stopSelf()
                         },
                         isDarkTheme = isDarkTheme,
                         scaleFactor = FLOATING_PANEL_SCALE_FACTOR
@@ -310,28 +307,97 @@ class FloatingWindowService : LifecycleService() {
         val pointIds = points.map { it.id }.toSet()
         val removedIds = pointViews.keys.filter { it !in pointIds }
         removedIds.forEach { id ->
-            val overlay = pointViews.remove(id) ?: return@forEach
-            runCatching { windowManager.removeView(overlay.view) }
+            removePointOverlayGroup(pointViews.remove(id))
         }
 
         points.forEach { point ->
             val boundedCenter = clampPointCenter(IntOffset(point.x, point.y))
-            if (boundedCenter.x != point.x || boundedCenter.y != point.y) {
-                AutoClickCoordinator.setPointPosition(point.id, boundedCenter.x, boundedCenter.y)
-            }
-
-            val overlay = pointViews[point.id] ?: createPointOverlay(point.id, boundedCenter)
-            val params = overlay.layoutParams
-            val windowOffset = centerToWindowOffset(boundedCenter)
-            if (params.x != windowOffset.x || params.y != windowOffset.y) {
-                params.x = windowOffset.x
-                params.y = windowOffset.y
-                windowManager.updateViewLayout(overlay.view, params)
+            if (point.actionType == AutoClickActionType.Swipe) {
+                val rawEnd = IntOffset(
+                    x = point.endX ?: (point.x + 200),
+                    y = point.endY ?: point.y
+                )
+                val boundedEnd = clampPointCenter(rawEnd)
+                if (boundedCenter.x != point.x ||
+                    boundedCenter.y != point.y ||
+                    boundedEnd.x != rawEnd.x ||
+                    boundedEnd.y != rawEnd.y
+                ) {
+                    AutoClickCoordinator.updatePointConfig(
+                        pointId = point.id,
+                        x = boundedCenter.x,
+                        y = boundedCenter.y,
+                        actionType = AutoClickActionType.Swipe,
+                        endX = boundedEnd.x,
+                        endY = boundedEnd.y
+                    )
+                }
+                syncSwipePointOverlay(pointId = point.id, start = boundedCenter, end = boundedEnd)
+            } else {
+                if (boundedCenter.x != point.x || boundedCenter.y != point.y) {
+                    AutoClickCoordinator.updatePointConfig(
+                        pointId = point.id,
+                        x = boundedCenter.x,
+                        y = boundedCenter.y,
+                        actionType = AutoClickActionType.Click
+                    )
+                }
+                syncClickPointOverlay(pointId = point.id, center = boundedCenter)
             }
         }
     }
 
-    private fun createPointOverlay(pointId: Int, center: IntOffset): PointOverlay {
+    private fun syncClickPointOverlay(pointId: Int, center: IntOffset) {
+        val existing = pointViews[pointId]
+        if (existing !is ClickPointOverlayGroup) {
+            removePointOverlayGroup(existing)
+            pointViews[pointId] = createClickPointOverlay(pointId, center)
+            return
+        }
+        updateOverlayWindow(
+            overlay = existing.bubble,
+            x = centerToWindowOffset(center).x,
+            y = centerToWindowOffset(center).y,
+            width = bubbleSizePx,
+            height = bubbleSizePx
+        )
+    }
+
+    private fun syncSwipePointOverlay(pointId: Int, start: IntOffset, end: IntOffset) {
+        val existing = pointViews[pointId]
+        if (existing !is SwipePointOverlayGroup) {
+            removePointOverlayGroup(existing)
+            pointViews[pointId] = createSwipePointOverlay(pointId, start, end)
+            return
+        }
+
+        updateOverlayWindow(
+            overlay = existing.startBubble,
+            x = centerToWindowOffset(start).x,
+            y = centerToWindowOffset(start).y,
+            width = bubbleSizePx,
+            height = bubbleSizePx
+        )
+        updateOverlayWindow(
+            overlay = existing.endBubble,
+            x = centerToWindowOffset(end).x,
+            y = centerToWindowOffset(end).y,
+            width = bubbleSizePx,
+            height = bubbleSizePx
+        )
+
+        val lineSpec = buildSwipeLineSpec(start = start, end = end)
+        updateOverlayWindow(
+            overlay = existing.line,
+            x = lineSpec.x,
+            y = lineSpec.y,
+            width = lineSpec.width,
+            height = lineSpec.height
+        )
+        bindSwipeLineContent(existing.line.view, lineSpec)
+    }
+
+    private fun createClickPointOverlay(pointId: Int, center: IntOffset): ClickPointOverlayGroup {
         val view = createComposeView().apply {
             setContent {
                 val isDarkTheme = isSystemInDarkTheme()
@@ -341,7 +407,7 @@ class FloatingWindowService : LifecycleService() {
                     val point = profile.points.firstOrNull { it.id == pointId }
                     if (point != null && index >= 0) {
                         TargetBubble(
-                            label = "${index + 1}.${point.actionType.displayName}",
+                            label = "${index + 1}",
                             onDrag = { drag ->
                                 if (drag.x != 0 || drag.y != 0) {
                                     val currentPoint = AutoClickCoordinator.profile.value.points
@@ -352,10 +418,11 @@ class FloatingWindowService : LifecycleService() {
                                             currentPoint.y + drag.y
                                         )
                                         val bounded = clampPointCenter(desired)
-                                        AutoClickCoordinator.setPointPosition(
-                                            currentPoint.id,
-                                            bounded.x,
-                                            bounded.y
+                                        AutoClickCoordinator.updatePointConfig(
+                                            pointId = currentPoint.id,
+                                            x = bounded.x,
+                                            y = bounded.y,
+                                            actionType = AutoClickActionType.Click
                                         )
                                     }
                                 }
@@ -367,7 +434,8 @@ class FloatingWindowService : LifecycleService() {
                             onRemove = {
                                 AutoClickCoordinator.removePoint(point.id)
                             },
-                            isDarkTheme = isDarkTheme
+                            isDarkTheme = isDarkTheme,
+                            scaleFactor = POINT_BUBBLE_SCALE_FACTOR
                         )
                     }
                 }
@@ -382,11 +450,197 @@ class FloatingWindowService : LifecycleService() {
             x = windowOffset.x
             y = windowOffset.y
         }
+        val overlay = PointOverlay(view = view, layoutParams = params)
         windowManager.addView(view, params)
+        return ClickPointOverlayGroup(bubble = overlay)
+    }
 
-        return PointOverlay(view = view, layoutParams = params).also {
-            pointViews[pointId] = it
+    private fun createSwipePointOverlay(pointId: Int, start: IntOffset, end: IntOffset): SwipePointOverlayGroup {
+        val startView = createComposeView().apply {
+            setContent {
+                val isDarkTheme = isSystemInDarkTheme()
+                MaterialTheme(colorScheme = if (isDarkTheme) darkColorScheme() else lightColorScheme()) {
+                    val profile by AutoClickCoordinator.profile.collectAsState()
+                    val index = profile.points.indexOfFirst { it.id == pointId }
+                    val point = profile.points.firstOrNull { it.id == pointId }
+                    if (point != null && index >= 0 && point.actionType == AutoClickActionType.Swipe) {
+                        TargetBubble(
+                            label = "${index + 1}起",
+                            onDrag = { drag ->
+                                if (drag.x == 0 && drag.y == 0) return@TargetBubble
+                                val latest = AutoClickCoordinator.profile.value.points
+                                    .firstOrNull { it.id == pointId } ?: return@TargetBubble
+                                val desired = IntOffset(latest.x + drag.x, latest.y + drag.y)
+                                val bounded = clampPointCenter(desired)
+                                AutoClickCoordinator.updatePointConfig(
+                                    pointId = latest.id,
+                                    x = bounded.x,
+                                    y = bounded.y,
+                                    actionType = AutoClickActionType.Swipe
+                                )
+                            },
+                            onDragEnd = {},
+                            onLongPress = {
+                                showPointEditDialog(point)
+                            },
+                            onRemove = {
+                                AutoClickCoordinator.removePoint(point.id)
+                            },
+                            isDarkTheme = isDarkTheme,
+                            scaleFactor = POINT_BUBBLE_SCALE_FACTOR
+                        )
+                    }
+                }
+            }
         }
+
+        val startParams = createLayoutParams(
+            width = bubbleSizePx,
+            height = bubbleSizePx
+        ).apply {
+            val windowOffset = centerToWindowOffset(start)
+            x = windowOffset.x
+            y = windowOffset.y
+        }
+        windowManager.addView(startView, startParams)
+        val startOverlay = PointOverlay(view = startView, layoutParams = startParams)
+
+        val endView = createComposeView().apply {
+            setContent {
+                val isDarkTheme = isSystemInDarkTheme()
+                MaterialTheme(colorScheme = if (isDarkTheme) darkColorScheme() else lightColorScheme()) {
+                    val profile by AutoClickCoordinator.profile.collectAsState()
+                    val index = profile.points.indexOfFirst { it.id == pointId }
+                    val point = profile.points.firstOrNull { it.id == pointId }
+                    if (point != null && index >= 0 && point.actionType == AutoClickActionType.Swipe) {
+                        TargetBubble(
+                            label = "${index + 1}终",
+                            onDrag = { drag ->
+                                if (drag.x == 0 && drag.y == 0) return@TargetBubble
+                                val latest = AutoClickCoordinator.profile.value.points
+                                    .firstOrNull { it.id == pointId } ?: return@TargetBubble
+                                val currentEnd = IntOffset(
+                                    latest.endX ?: (latest.x + 200),
+                                    latest.endY ?: latest.y
+                                )
+                                val desired = IntOffset(currentEnd.x + drag.x, currentEnd.y + drag.y)
+                                val bounded = clampPointCenter(desired)
+                                AutoClickCoordinator.updatePointConfig(
+                                    pointId = latest.id,
+                                    actionType = AutoClickActionType.Swipe,
+                                    endX = bounded.x,
+                                    endY = bounded.y
+                                )
+                            },
+                            onDragEnd = {},
+                            onLongPress = {
+                                showPointEditDialog(point)
+                            },
+                            onRemove = {
+                                AutoClickCoordinator.removePoint(point.id)
+                            },
+                            isDarkTheme = isDarkTheme,
+                            scaleFactor = POINT_BUBBLE_SCALE_FACTOR
+                        )
+                    }
+                }
+            }
+        }
+
+        val endParams = createLayoutParams(
+            width = bubbleSizePx,
+            height = bubbleSizePx
+        ).apply {
+            val windowOffset = centerToWindowOffset(end)
+            x = windowOffset.x
+            y = windowOffset.y
+        }
+        windowManager.addView(endView, endParams)
+        val endOverlay = PointOverlay(view = endView, layoutParams = endParams)
+
+        val lineSpec = buildSwipeLineSpec(start = start, end = end)
+        val lineView = createComposeView()
+        bindSwipeLineContent(lineView, lineSpec)
+        val lineParams = createLayoutParams(
+            width = lineSpec.width,
+            height = lineSpec.height
+        ).apply {
+            x = lineSpec.x
+            y = lineSpec.y
+            flags = flags or WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE
+        }
+        windowManager.addView(lineView, lineParams)
+        val lineOverlay = PointOverlay(
+            view = lineView,
+            layoutParams = lineParams,
+            alwaysNotTouchable = true
+        )
+        runCatching {
+            windowManager.removeView(startView)
+            windowManager.removeView(endView)
+            windowManager.addView(startView, startParams)
+            windowManager.addView(endView, endParams)
+        }
+
+        return SwipePointOverlayGroup(
+            startBubble = startOverlay,
+            endBubble = endOverlay,
+            line = lineOverlay
+        )
+    }
+
+    private fun updateOverlayWindow(
+        overlay: PointOverlay,
+        x: Int,
+        y: Int,
+        width: Int,
+        height: Int,
+    ) {
+        val params = overlay.layoutParams
+        if (params.x == x && params.y == y && params.width == width && params.height == height) {
+            return
+        }
+        params.x = x
+        params.y = y
+        params.width = width
+        params.height = height
+        runCatching { windowManager.updateViewLayout(overlay.view, params) }
+    }
+
+    private fun removePointOverlayGroup(group: PointOverlayGroup?) {
+        group?.overlays()?.forEach { overlay ->
+            runCatching { windowManager.removeView(overlay.view) }
+        }
+    }
+
+    private fun bindSwipeLineContent(view: ComposeView, spec: SwipeLineSpec) {
+        view.setContent {
+            Canvas(modifier = Modifier.fillMaxSize()) {
+                drawLine(
+                    color = Color(0xFF3A86FF),
+                    start = spec.startOffset,
+                    end = spec.endOffset,
+                    strokeWidth = 2.dp.toPx()
+                )
+            }
+        }
+    }
+
+    private fun buildSwipeLineSpec(start: IntOffset, end: IntOffset): SwipeLineSpec {
+        val density = resources.displayMetrics.density
+        val padding = max(2, (2f * density).roundToInt())
+        val x = (min(start.x, end.x) - padding).coerceAtLeast(0)
+        val y = (min(start.y, end.y) - padding).coerceAtLeast(0)
+        val width = (kotlin.math.abs(start.x - end.x).coerceAtLeast(1) + padding * 2)
+        val height = (kotlin.math.abs(start.y - end.y).coerceAtLeast(1) + padding * 2)
+        return SwipeLineSpec(
+            x = x,
+            y = y,
+            width = width,
+            height = height,
+            startOffset = Offset((start.x - x).toFloat(), (start.y - y).toFloat()),
+            endOffset = Offset((end.x - x).toFloat(), (end.y - y).toFloat())
+        )
     }
 
     private fun updatePanelOffset(desiredOffset: IntOffset) {
@@ -717,29 +971,32 @@ class FloatingWindowService : LifecycleService() {
         recordCaptureView = null
         recordCaptureLayoutParams = null
 
-        pointViews.values.forEach { overlay ->
-            runCatching { windowManager.removeView(overlay.view) }
+        pointViews.values.forEach { group ->
+            group.overlays().forEach { overlay ->
+                runCatching { windowManager.removeView(overlay.view) }
+            }
         }
         pointViews.clear()
-        panelMinimized.value = false
         AutoClickCoordinator.stopRecording()
         _overlayVisible.value = false
     }
 
     private fun setPointOverlaysTouchable(touchable: Boolean) {
         val touchableFlag = WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE
-        pointViews.values.forEach { overlay ->
-            val params = overlay.layoutParams
-            val hasFlag = (params.flags and touchableFlag) != 0
-            val needFlag = !touchable
-            if (hasFlag == needFlag) return@forEach
+        pointViews.values.forEach { group ->
+            group.overlays().forEach { overlay ->
+                val params = overlay.layoutParams
+                val hasFlag = (params.flags and touchableFlag) != 0
+                val needFlag = !touchable || overlay.alwaysNotTouchable
+                if (hasFlag == needFlag) return@forEach
 
-            params.flags = if (needFlag) {
-                params.flags or touchableFlag
-            } else {
-                params.flags and touchableFlag.inv()
+                params.flags = if (needFlag) {
+                    params.flags or touchableFlag
+                } else {
+                    params.flags and touchableFlag.inv()
+                }
+                runCatching { windowManager.updateViewLayout(overlay.view, params) }
             }
-            runCatching { windowManager.updateViewLayout(overlay.view, params) }
         }
     }
 
@@ -749,8 +1006,6 @@ class FloatingWindowService : LifecycleService() {
 
         private val _overlayVisible = MutableStateFlow(false)
         val overlayVisible: StateFlow<Boolean> = _overlayVisible.asStateFlow()
-        private val preferredMode = MutableStateFlow(FloatingWindowMode.Edit)
-        val mode: StateFlow<FloatingWindowMode> = preferredMode.asStateFlow()
 
         fun start(context: Context) {
             context.startService(Intent(context, FloatingWindowService::class.java).apply {
@@ -767,10 +1022,6 @@ class FloatingWindowService : LifecycleService() {
         fun startAutoClickOverlay(context: Context) = start(context)
 
         fun stopAutoClickOverlay(context: Context) = stop(context)
-
-        fun setMode(mode: FloatingWindowMode) {
-            preferredMode.value = mode
-        }
     }
 
     private inner class OverlaySavedStateOwner : SavedStateRegistryOwner {
@@ -798,6 +1049,34 @@ class FloatingWindowService : LifecycleService() {
 private data class PointOverlay(
     val view: ComposeView,
     val layoutParams: WindowManager.LayoutParams,
+    val alwaysNotTouchable: Boolean = false,
+)
+
+private sealed interface PointOverlayGroup {
+    fun overlays(): List<PointOverlay>
+}
+
+private data class ClickPointOverlayGroup(
+    val bubble: PointOverlay,
+) : PointOverlayGroup {
+    override fun overlays(): List<PointOverlay> = listOf(bubble)
+}
+
+private data class SwipePointOverlayGroup(
+    val startBubble: PointOverlay,
+    val endBubble: PointOverlay,
+    val line: PointOverlay,
+) : PointOverlayGroup {
+    override fun overlays(): List<PointOverlay> = listOf(line, startBubble, endBubble)
+}
+
+private data class SwipeLineSpec(
+    val x: Int,
+    val y: Int,
+    val width: Int,
+    val height: Int,
+    val startOffset: Offset,
+    val endOffset: Offset,
 )
 
 @Composable
@@ -805,7 +1084,6 @@ private fun FloatingPanel(
     runState: AutoClickRunState,
     runMessage: String?,
     isRecording: Boolean,
-    isMinimized: Boolean,
     onSizeChanged: (IntSize) -> Unit,
     onDrag: (IntOffset) -> Unit,
     onToggleRun: () -> Unit,
@@ -815,64 +1093,23 @@ private fun FloatingPanel(
     onSave: () -> Unit,
     onEditPoint: (AutoClickPoint) -> Unit,
     onDeletePoint: (AutoClickPoint) -> Unit,
-    onToggleMinimized: () -> Unit,
+    onClosePanel: () -> Unit,
     isDarkTheme: Boolean,
     scaleFactor: Float,
 ) {
-    val profile by AutoClickCoordinator.profile.collectAsState()
-    val points = profile.points
     val panelContainerColor = if (isDarkTheme) Color(0xE62A2D34) else Color(0xEFFFFAF2)
     val panelHandleColor = if (isDarkTheme) Color(0xFF3A404D) else Color(0xFFE0E0E0)
-    val panelTitleColor = if (isDarkTheme) Color(0xFFE7ECF5) else Color(0xFF263238)
-    val listTitleColor = if (isDarkTheme) Color(0xFFD4DEEE) else Color(0xFF37474F)
-    val listHintColor = if (isDarkTheme) Color(0xFF9CAAC5) else Color(0xFF78909C)
     val panelCorner = scaledDp(16.dp, scaleFactor)
-    val panelPadding = scaledDp(12.dp, scaleFactor)
+    val panelPadding = scaledDp(10.dp, scaleFactor)
     val panelSpacing = scaledDp(8.dp, scaleFactor)
     val sideButtonSpacing = scaledDp(8.dp, scaleFactor)
-    val rowSpacing = scaledDp(12.dp, scaleFactor)
     val handleHeight = scaledDp(16.dp, scaleFactor)
     val handleCorner = scaledDp(8.dp, scaleFactor)
-    val actionColumnWidth = scaledDp(220.dp, scaleFactor)
-    val actionListMaxHeight = scaledDp(220.dp, scaleFactor)
-
-    if (isMinimized) {
-        Card(
-            modifier = Modifier
-                .onSizeChanged(onSizeChanged)
-                .pointerInput(Unit) {
-                    detectDragGestures { change, dragAmount ->
-                        change.consume()
-                        onDrag(IntOffset(dragAmount.x.roundToInt(), dragAmount.y.roundToInt()))
-                    }
-                },
-            shape = RoundedCornerShape(panelCorner),
-            colors = CardDefaults.cardColors(containerColor = panelContainerColor)
-        ) {
-            Column(
-                modifier = Modifier.padding(scaledDp(10.dp, scaleFactor)),
-                verticalArrangement = Arrangement.spacedBy(panelSpacing),
-                horizontalAlignment = Alignment.CenterHorizontally
-            ) {
-                PanelMiniButton(
-                    text = "运行",
-                    onClick = onToggleRun,
-                    isDarkTheme = isDarkTheme,
-                    scaleFactor = scaleFactor
-                )
-                PanelMiniButton(
-                    text = "最小化",
-                    onClick = onToggleMinimized,
-                    isDarkTheme = isDarkTheme,
-                    scaleFactor = scaleFactor
-                )
-            }
-        }
-        return
-    }
+    val panelWidth = scaledDp(68.dp, scaleFactor)
 
     Card(
         modifier = Modifier
+            .width(panelWidth)
             .onSizeChanged(onSizeChanged),
         shape = RoundedCornerShape(panelCorner),
         colors = CardDefaults.cardColors(containerColor = panelContainerColor)
@@ -893,138 +1130,62 @@ private fun FloatingPanel(
                         }
                     }
             )
-            Text(
-                text = "定时点击器Ultra(拖动小白条移动位置)",
-                color = panelTitleColor,
-                style = MaterialTheme.typography.bodySmall
-            )
-            Row(horizontalArrangement = Arrangement.spacedBy(rowSpacing)) {
-                Column(
-                    verticalArrangement = Arrangement.spacedBy(sideButtonSpacing)
-                ) {
-                    PanelActionButton(
-                        icon = if (runState == AutoClickRunState.Running || runState == AutoClickRunState.Paused) {
-                            Icons.Filled.Stop
-                        } else {
-                            Icons.Filled.PlayArrow
-                        },
-                        contentDescription = if (runState == AutoClickRunState.Running || runState == AutoClickRunState.Paused) {
-                            "运行中，点击停止"
-                        } else {
-                            "运行"
-                        },
-                        onClick = onToggleRun,
-                        isDarkTheme = isDarkTheme,
-                        scaleFactor = scaleFactor
-                    )
-                    PanelActionButton(
-                        label = if (isRecording) "停" else "录",
-                        contentDescription = if (isRecording) "停止录制" else "录制",
-                        onClick = onToggleRecord,
-                        isDarkTheme = isDarkTheme,
-                        scaleFactor = scaleFactor
-                    )
-                    PanelActionButton(
-                        icon = Icons.Filled.Add,
-                        contentDescription = "添加动作",
-                        onClick = onAddAction,
-                        isDarkTheme = isDarkTheme,
-                        scaleFactor = scaleFactor
-                    )
-                    PanelActionButton(
-                        icon = Icons.Filled.Delete,
-                        contentDescription = "删除最新动作",
-                        onClick = onDeleteLatest,
-                        isDarkTheme = isDarkTheme,
-                        scaleFactor = scaleFactor
-                    )
-                    PanelActionButton(
-                        icon = Icons.Filled.Save,
-                        contentDescription = "保存",
-                        onClick = onSave,
-                        isDarkTheme = isDarkTheme,
-                        scaleFactor = scaleFactor
-                    )
-                    PanelActionButton(
-                        label = "缩",
-                        contentDescription = "最小化",
-                        onClick = onToggleMinimized,
-                        isDarkTheme = isDarkTheme,
-                        scaleFactor = scaleFactor
-                    )
-                }
-
-                Column(
-                    modifier = Modifier.width(actionColumnWidth),
-                    verticalArrangement = Arrangement.spacedBy(scaledDp(6.dp, scaleFactor))
-                ) {
-                    Text(
-                        text = "动作列表（与画圈标签一致）",
-                        color = listTitleColor,
-                        style = MaterialTheme.typography.labelSmall
-                    )
-                    if (points.isEmpty()) {
-                        Text(
-                            text = "暂无动作，点击左侧“添加”或“录制”开始",
-                            color = listHintColor,
-                            style = MaterialTheme.typography.labelSmall
-                        )
+            Column(
+                verticalArrangement = Arrangement.spacedBy(sideButtonSpacing),
+                horizontalAlignment = Alignment.CenterHorizontally
+            ) {
+                PanelActionButton(
+                    icon = if (runState == AutoClickRunState.Running || runState == AutoClickRunState.Paused) {
+                        Icons.Filled.Stop
                     } else {
-                        LazyColumn(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .heightIn(max = actionListMaxHeight),
-                            verticalArrangement = Arrangement.spacedBy(scaledDp(6.dp, scaleFactor))
-                        ) {
-                            itemsIndexed(
-                                items = points,
-                                key = { _, point -> point.id }
-                            ) { index, point ->
-                                ActionItemRow(
-                                    label = "${index + 1}.${point.actionType.displayName}",
-                                    actionType = point.actionType,
-                                    onEdit = { onEditPoint(point) },
-                                    onDelete = { onDeletePoint(point) },
-                                    isDarkTheme = isDarkTheme,
-                                    scaleFactor = scaleFactor
-                                )
-                            }
-                        }
-                    }
-                }
+                        Icons.Filled.PlayArrow
+                    },
+                    contentDescription = if (runState == AutoClickRunState.Running || runState == AutoClickRunState.Paused) {
+                        "运行中，点击停止"
+                    } else {
+                        "运行"
+                    },
+                    onClick = onToggleRun,
+                    isDarkTheme = isDarkTheme,
+                    scaleFactor = scaleFactor
+                )
+                PanelActionButton(
+                    label = if (isRecording) "停" else "录",
+                    contentDescription = if (isRecording) "停止录制" else "录制",
+                    onClick = onToggleRecord,
+                    isDarkTheme = isDarkTheme,
+                    scaleFactor = scaleFactor
+                )
+                PanelActionButton(
+                    icon = Icons.Filled.Add,
+                    contentDescription = "添加动作",
+                    onClick = onAddAction,
+                    isDarkTheme = isDarkTheme,
+                    scaleFactor = scaleFactor
+                )
+                PanelActionButton(
+                    icon = Icons.Filled.Delete,
+                    contentDescription = "删除最新动作",
+                    onClick = onDeleteLatest,
+                    isDarkTheme = isDarkTheme,
+                    scaleFactor = scaleFactor
+                )
+                PanelActionButton(
+                    icon = Icons.Filled.Save,
+                    contentDescription = "保存",
+                    onClick = onSave,
+                    isDarkTheme = isDarkTheme,
+                    scaleFactor = scaleFactor
+                )
+                PanelActionButton(
+                    icon = Icons.Filled.Close,
+                    contentDescription = "关闭悬浮窗",
+                    onClick = onClosePanel,
+                    isDarkTheme = isDarkTheme,
+                    scaleFactor = scaleFactor
+                )
             }
         }
-    }
-}
-
-@Composable
-private fun PanelMiniButton(
-    text: String,
-    onClick: () -> Unit,
-    isDarkTheme: Boolean,
-    scaleFactor: Float,
-) {
-    val backgroundColor = if (isDarkTheme) Color(0xFF2D3542) else Color(0xFFF5F5F5)
-    val borderColor = if (isDarkTheme) Color(0xFF4A5568) else Color(0xFFE0E0E0)
-    val textColor = if (isDarkTheme) Color(0xFFE2E8F0) else Color(0xFF37474F)
-    val buttonWidth = scaledDp(72.dp, scaleFactor)
-    val buttonHeight = scaledDp(36.dp, scaleFactor)
-    val corner = scaledDp(18.dp, scaleFactor)
-
-    Box(
-        modifier = Modifier
-            .width(buttonWidth)
-            .height(buttonHeight)
-            .background(backgroundColor, RoundedCornerShape(corner))
-            .border(1.dp, borderColor, RoundedCornerShape(corner))
-            .clickable(onClick = onClick),
-        contentAlignment = Alignment.Center
-    ) {
-        Text(
-            text = text,
-            color = textColor,
-            style = MaterialTheme.typography.labelSmall
-        )
     }
 }
 
@@ -1036,14 +1197,21 @@ private fun TargetBubble(
     onLongPress: () -> Unit,
     onRemove: () -> Unit,
     isDarkTheme: Boolean,
+    scaleFactor: Float,
+    showRemove: Boolean = false,
 ) {
     val bubbleFillColor = if (isDarkTheme) Color(0xCC4D84FF) else Color(0xCC1976D2)
     val bubbleBorderColor = if (isDarkTheme) Color(0xFFDDE7FF) else Color.White
     val removeFillColor = if (isDarkTheme) Color(0xCCE35D5B) else Color(0xCCB00020)
+    val containerSize = scaledDp(76.dp, scaleFactor)
+    val centerSize = scaledDp(68.dp, scaleFactor)
+    val removeSize = scaledDp(20.dp, scaleFactor)
+    val centerBorder = scaledDp(2.dp, scaleFactor).coerceAtLeast(1.dp)
+    val removeBorder = scaledDp(1.dp, scaleFactor).coerceAtLeast(1.dp)
 
     Box(
         modifier = Modifier
-            .size(76.dp)
+            .size(containerSize)
             .pointerInput(Unit) {
                 detectTapGestures(onLongPress = { onLongPress() })
             }
@@ -1059,27 +1227,34 @@ private fun TargetBubble(
         Box(
             modifier = Modifier
                 .align(Alignment.Center)
-                .size(68.dp)
+                .size(centerSize)
                 .background(bubbleFillColor, CircleShape)
-                .border(2.dp, bubbleBorderColor, CircleShape),
+                .border(centerBorder, bubbleBorderColor, CircleShape)
+                .padding(horizontal = scaledDp(1.dp, scaleFactor)),
             contentAlignment = Alignment.Center
         ) {
-            Text(
+            AutoResizeSingleLineText(
                 text = label,
+                modifier = Modifier.fillMaxWidth(),
                 color = Color.White,
-                style = MaterialTheme.typography.bodySmall
+                style = MaterialTheme.typography.bodyMedium.copy(fontSize = 42.sp),
+                minFontSize = 5.sp,
+                textAlign = TextAlign.Center,
+                overflow = TextOverflow.Clip
             )
         }
-        Box(
-            modifier = Modifier
-                .align(Alignment.TopEnd)
-                .size(20.dp)
-                .background(removeFillColor, CircleShape)
-                .border(1.dp, bubbleBorderColor, CircleShape)
-                .clickable(onClick = onRemove),
-            contentAlignment = Alignment.Center
-        ) {
-            Text("x", color = Color.White)
+        if (showRemove) {
+            Box(
+                modifier = Modifier
+                    .align(Alignment.TopEnd)
+                    .size(removeSize)
+                    .background(removeFillColor, CircleShape)
+                    .border(removeBorder, bubbleBorderColor, CircleShape)
+                    .clickable(onClick = onRemove),
+                contentAlignment = Alignment.Center
+            ) {
+                Text("x", color = Color.White)
+            }
         }
     }
 }
@@ -1108,6 +1283,7 @@ private fun ActionItemRow(
         horizontalArrangement = Arrangement.SpaceBetween
     ) {
         Row(
+            modifier = Modifier.weight(1f),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(scaledDp(6.dp, scaleFactor))
         ) {
@@ -1121,8 +1297,9 @@ private fun ActionItemRow(
                 tint = iconTintColor,
                 modifier = Modifier.size(iconSize)
             )
-            Text(
+            AutoResizeSingleLineText(
                 text = label,
+                modifier = Modifier.fillMaxWidth(),
                 style = MaterialTheme.typography.labelSmall,
                 color = rowTextColor
             )
@@ -1196,6 +1373,47 @@ private fun PanelActionButton(
             )
         }
     }
+}
+
+@Composable
+private fun AutoResizeSingleLineText(
+    text: String,
+    modifier: Modifier = Modifier,
+    color: Color,
+    style: TextStyle,
+    minFontSize: TextUnit = 9.sp,
+    textAlign: TextAlign = TextAlign.Start,
+    overflow: TextOverflow = TextOverflow.Ellipsis,
+) {
+    val baseFontSize = if (style.fontSize != TextUnit.Unspecified) style.fontSize else 14.sp
+    val currentFontSize = remember(text, baseFontSize, minFontSize) { mutableStateOf(baseFontSize) }
+    val readyToDraw = remember(text, baseFontSize, minFontSize) { mutableStateOf(false) }
+
+    Text(
+        text = text,
+        modifier = modifier.drawWithContent {
+            if (readyToDraw.value) {
+                drawContent()
+            }
+        },
+        color = color,
+        style = style.copy(fontSize = currentFontSize.value),
+        textAlign = textAlign,
+        maxLines = 1,
+        softWrap = false,
+        overflow = overflow,
+        onTextLayout = { textLayoutResult ->
+            if (readyToDraw.value) {
+                return@Text
+            }
+            if (textLayoutResult.hasVisualOverflow && currentFontSize.value > minFontSize) {
+                val nextSize = (currentFontSize.value.value - 0.25f).coerceAtLeast(minFontSize.value)
+                currentFontSize.value = nextSize.sp
+                return@Text
+            }
+            readyToDraw.value = true
+        }
+    )
 }
 
 private fun scaledDp(size: Dp, scaleFactor: Float): Dp {

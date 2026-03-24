@@ -53,12 +53,13 @@ import androidx.navigationevent.compose.LocalNavigationEventDispatcherOwner
 import androidx.navigationevent.compose.rememberNavigationEventDispatcherOwner
 import com.example.littleclicker.ConfigManageActivity
 import com.example.littleclicker.R
+import com.example.littleclicker.autoclick.AutoClickActionType
 import com.example.littleclicker.autoclick.AutoClickCoordinator
+import com.example.littleclicker.autoclick.AutoClickPoint
 import com.example.littleclicker.autoclick.AutoClickRunMode
 import com.example.littleclicker.autoclick.TimeSyncState
 import com.example.littleclicker.autoclick.displayName
 import com.example.littleclicker.service.FloatingWindowService
-import com.example.littleclicker.service.FloatingWindowMode
 import com.example.littleclicker.service.TimerFloatingWindowService
 import kotlinx.coroutines.delay
 import java.util.Calendar
@@ -86,7 +87,6 @@ internal fun AutoClickScreen(innerPadding: PaddingValues) {
 
     val profile by AutoClickCoordinator.profile.collectAsState()
     val overlayEnabled by FloatingWindowService.overlayVisible.collectAsState()
-    val floatingMode by FloatingWindowService.mode.collectAsState()
     val timerOverlayEnabled by TimerFloatingWindowService.overlayVisible.collectAsState()
     val runtime by AutoClickCoordinator.runtime.collectAsState()
     val timeSync by AutoClickCoordinator.timeSync.collectAsState()
@@ -144,14 +144,9 @@ internal fun AutoClickScreen(innerPadding: PaddingValues) {
     val pendingStatuses = statuses.filterNot { it.granted }
     val randomTip = remember(refreshToken) { context.loadRandomAutoClickTip() }
     val runModeItems = listOf("运行一次", "循环运行直至手动停止")
-    val floatingModeItems = listOf("编辑模式", "运行模式")
     val selectedRunModeIndex = when (profile.runMode) {
         AutoClickRunMode.RunOnce -> 0
         AutoClickRunMode.LoopUntilStopped -> 1
-    }
-    val selectedFloatingModeIndex = when (floatingMode) {
-        FloatingWindowMode.Edit -> 0
-        FloatingWindowMode.Run -> 1
     }
 
     LazyColumn(
@@ -236,7 +231,7 @@ internal fun AutoClickScreen(innerPadding: PaddingValues) {
                                     return@SuperSwitch
                                 }
                                 FloatingWindowService.startAutoClickOverlay(context)
-                                Toast.makeText(context, "动作悬浮窗已启动", Toast.LENGTH_SHORT).show()
+                                Toast.makeText(context, "悬浮窗已开启（拖动小白条移动位置），配置完记得保存哦", Toast.LENGTH_SHORT).show()
                             } else {
                                 FloatingWindowService.stopAutoClickOverlay(context)
                                 Toast.makeText(context, "动作悬浮窗已关闭", Toast.LENGTH_SHORT).show()
@@ -247,26 +242,6 @@ internal fun AutoClickScreen(innerPadding: PaddingValues) {
                     )
                     val navigationEventOwner = rememberNavigationEventDispatcherOwner(parent = null)
                     CompositionLocalProvider(LocalNavigationEventDispatcherOwner provides navigationEventOwner) {
-                        WindowDropdown(
-                            items = floatingModeItems,
-                            selectedIndex = selectedFloatingModeIndex,
-                            title = "悬浮窗模式",
-                            summary = "编辑模式=完整面板；运行模式=最小化面板，设置定时后推荐使用最小化，防止阻挡UI",
-                            onSelectedIndexChange = { index ->
-                                val mode = if (index == 0) {
-                                    FloatingWindowMode.Edit
-                                } else {
-                                    FloatingWindowMode.Run
-                                }
-                                FloatingWindowService.setMode(mode)
-                                val tip = if (mode == FloatingWindowMode.Edit) {
-                                    "悬浮窗模式：编辑模式（完整）"
-                                } else {
-                                    "悬浮窗模式：运行模式（最小化）"
-                                }
-                                Toast.makeText(context, tip, Toast.LENGTH_SHORT).show()
-                            }
-                        )
                         WindowDropdown(
                             items = runModeItems,
                             selectedIndex = selectedRunModeIndex,
@@ -420,10 +395,32 @@ internal fun AutoClickScreen(innerPadding: PaddingValues) {
                             text = "延迟/触摸/重复：${point.delayMs}ms / ${point.touchDurationMs}ms / ${point.repeatCount}",
                             color = MiuixTheme.colorScheme.onBackgroundVariant
                         )
-                        Text(
-                            text = "编辑方式：长按动作悬浮窗中的对应点击点",
-                            color = accentColor
-                        )
+                        if (point.actionType == AutoClickActionType.Swipe) {
+                            Text(
+                                text = "滑动终点：(${point.endX ?: point.x + 200}, ${point.endY ?: point.y})",
+                                color = MiuixTheme.colorScheme.onBackgroundVariant
+                            )
+                        }
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(10.dp)
+                        ) {
+                            Button(
+                                onClick = { showPointEditDialog(context, point) },
+                                modifier = Modifier.weight(1f)
+                            ) {
+                                Text("编辑点击点")
+                            }
+                            Button(
+                                onClick = {
+                                    AutoClickCoordinator.removePoint(point.id)
+                                    Toast.makeText(context, "已删除点击点 #${point.id}", Toast.LENGTH_SHORT).show()
+                                },
+                                modifier = Modifier.weight(1f)
+                            ) {
+                                Text("删除点击点")
+                            }
+                        }
                     }
                 }
             }
@@ -625,6 +622,119 @@ private fun showHmsPickerDialog(
             onSelected(hourPicker.value, minutePicker.value, secondPicker.value)
         }
         .show()
+}
+
+private fun showPointEditDialog(
+    context: Context,
+    point: AutoClickPoint,
+) {
+    val latestPoint = AutoClickCoordinator.profile.value.points.firstOrNull { it.id == point.id } ?: point
+    val xInput = createNumberInput(context, latestPoint.x)
+    val yInput = createNumberInput(context, latestPoint.y)
+    val endXInput = createNumberInput(context, latestPoint.endX ?: (latestPoint.x + 200))
+    val endYInput = createNumberInput(context, latestPoint.endY ?: latestPoint.y)
+    val delayInput = createNumberInput(context, latestPoint.delayMs.toInt())
+    val touchInput = createNumberInput(context, latestPoint.touchDurationMs.toInt())
+    val repeatInput = createNumberInput(context, latestPoint.repeatCount)
+    val isSwipeAction = latestPoint.actionType == AutoClickActionType.Swipe
+
+    val container = LinearLayout(context).apply {
+        orientation = LinearLayout.VERTICAL
+        setPadding(40, 30, 40, 10)
+        addView(buildField(context, "动作类型", createReadOnlyInput(context, latestPoint.actionType.displayName)))
+        addView(buildField(context, "X 中心坐标", xInput))
+        addView(buildField(context, "Y 中心坐标", yInput))
+        if (isSwipeAction) {
+            addView(buildField(context, "滑动结束X", endXInput))
+            addView(buildField(context, "滑动结束Y", endYInput))
+        }
+        addView(buildField(context, "点击延迟(ms)", delayInput))
+        addView(buildField(context, "触摸时长(ms)", touchInput))
+        addView(buildField(context, "重复次数", repeatInput))
+    }
+
+    AlertDialog.Builder(context)
+        .setTitle("编辑点击点 #${point.id}")
+        .setView(container)
+        .setNegativeButton("取消", null)
+        .setPositiveButton("保存") { _, _ ->
+            val currentPoint = AutoClickCoordinator.profile.value.points.firstOrNull { it.id == point.id } ?: point
+            val safeX = xInput.text.toString().toIntOrNull()?.coerceAtLeast(0) ?: currentPoint.x
+            val safeY = yInput.text.toString().toIntOrNull()?.coerceAtLeast(0) ?: currentPoint.y
+            val actionType = currentPoint.actionType
+            val endX = if (actionType == AutoClickActionType.Swipe) {
+                endXInput.text.toString().toIntOrNull()
+            } else {
+                null
+            }
+            val endY = if (actionType == AutoClickActionType.Swipe) {
+                endYInput.text.toString().toIntOrNull()
+            } else {
+                null
+            }
+            val safeEndX = if (actionType == AutoClickActionType.Swipe) {
+                (endX ?: currentPoint.endX ?: (safeX + 200)).coerceAtLeast(0)
+            } else {
+                null
+            }
+            val safeEndY = if (actionType == AutoClickActionType.Swipe) {
+                (endY ?: currentPoint.endY ?: safeY).coerceAtLeast(0)
+            } else {
+                null
+            }
+
+            AutoClickCoordinator.updatePointConfig(
+                pointId = point.id,
+                x = safeX,
+                y = safeY,
+                actionType = actionType,
+                endX = safeEndX,
+                endY = safeEndY,
+                delayMs = xInputToLong(delayInput, currentPoint.delayMs, min = 0L),
+                touchDurationMs = xInputToLong(touchInput, currentPoint.touchDurationMs, min = 1L),
+                repeatCount = repeatInput.text.toString().toIntOrNull()?.coerceAtLeast(1) ?: currentPoint.repeatCount
+            )
+            Toast.makeText(context, "点击点 #${point.id} 已更新", Toast.LENGTH_SHORT).show()
+        }
+        .show()
+}
+
+private fun xInputToLong(input: EditText, fallback: Long, min: Long): Long {
+    return input.text.toString().toLongOrNull()?.coerceAtLeast(min) ?: fallback
+}
+
+private fun buildField(context: Context, title: String, input: EditText): LinearLayout {
+    val titleView = EditText(context).apply {
+        setText(title)
+        isEnabled = false
+        setTextColor(0xFF455A64.toInt())
+        background = null
+        isFocusable = false
+        isClickable = false
+    }
+    return LinearLayout(context).apply {
+        orientation = LinearLayout.VERTICAL
+        addView(titleView)
+        addView(input)
+    }
+}
+
+private fun createNumberInput(context: Context, defaultValue: Int): EditText {
+    return EditText(context).apply {
+        inputType = InputType.TYPE_CLASS_NUMBER
+        setText(defaultValue.toString())
+    }
+}
+
+private fun createReadOnlyInput(context: Context, value: String): EditText {
+    return EditText(context).apply {
+        setText(value)
+        isEnabled = false
+        setTextColor(0xFF455A64.toInt())
+        background = null
+        isFocusable = false
+        isClickable = false
+    }
 }
 
 private fun Context.loadRandomAutoClickTip(): String {
