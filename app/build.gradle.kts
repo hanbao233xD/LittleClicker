@@ -1,6 +1,17 @@
+import org.gradle.api.GradleException
+import java.util.Properties
+
 plugins {
     alias(libs.plugins.android.application)
     id("org.jetbrains.kotlin.plugin.compose")
+}
+
+val releaseSigningPropertiesFile = rootProject.file("keystore/release-signing.properties")
+if (!releaseSigningPropertiesFile.exists()) {
+    throw GradleException("Missing release signing file: ${releaseSigningPropertiesFile.path}")
+}
+val releaseSigningProperties = Properties().apply {
+    releaseSigningPropertiesFile.inputStream().use { load(it) }
 }
 
 android {
@@ -8,6 +19,21 @@ android {
     compileSdk {
         version = release(36) {
             minorApiLevel = 1
+        }
+    }
+
+    signingConfigs {
+        create("release") {
+            storeFile = rootProject.file(
+                releaseSigningProperties.getProperty("storeFile")
+                    ?: throw GradleException("Missing storeFile in ${releaseSigningPropertiesFile.path}")
+            )
+            storePassword = releaseSigningProperties.getProperty("storePassword")
+                ?: throw GradleException("Missing storePassword in ${releaseSigningPropertiesFile.path}")
+            keyAlias = releaseSigningProperties.getProperty("keyAlias")
+                ?: throw GradleException("Missing keyAlias in ${releaseSigningPropertiesFile.path}")
+            keyPassword = releaseSigningProperties.getProperty("keyPassword")
+                ?: throw GradleException("Missing keyPassword in ${releaseSigningPropertiesFile.path}")
         }
     }
 
@@ -23,6 +49,7 @@ android {
 
     buildTypes {
         release {
+            signingConfig = signingConfigs.getByName("release")
             isMinifyEnabled = false
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),

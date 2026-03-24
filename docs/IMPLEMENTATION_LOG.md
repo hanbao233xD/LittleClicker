@@ -404,3 +404,20 @@
     - `android:canRequestFilterKeyEvents="true"`
 - 验证结果：
   - `./gradlew :app:assembleDebug --no-daemon` 通过。
+
+## 2026-03-25（发布签名接入 + Release 打包）
+- 新增发布签名资产（按用户要求可放仓库）：
+  - `keystore/littleclicker-release.jks`
+  - `keystore/release-signing.properties`
+- `app/build.gradle.kts` 接入发布签名：
+  - 读取 `keystore/release-signing.properties`。
+  - `signingConfigs.create("release")` 配置 `storeFile / storePassword / keyAlias / keyPassword`。
+  - `buildTypes.release` 绑定 `signingConfig = signingConfigs.getByName("release")`。
+- 构建与验签结果：
+  - `./gradlew :app:assembleRelease :app:bundleRelease` 通过。
+  - `apksigner verify --print-certs app/build/outputs/apk/release/app-release.apk` 通过（证书 `CN=LittleClicker`）。
+  - `jarsigner -verify -verbose -certs app/build/outputs/bundle/release/app-release.aab` 通过（证书 `CN=LittleClicker`）。
+- 产物已复制到仓库可提交目录：
+  - `releases/2026-03-25/LittleClicker-v1.0-release.apk`
+  - `releases/2026-03-25/LittleClicker-v1.0-release.aab`
+  - `releases/2026-03-25/checksums.txt`
