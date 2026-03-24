@@ -220,9 +220,7 @@ internal fun AutoClickScreen(innerPadding: PaddingValues) {
                         checked = overlayEnabled,
                         onCheckedChange = { shouldEnable ->
                             if (shouldEnable) {
-                                if (!Settings.canDrawOverlays(context)) {
-                                    openOverlaySettings(context)
-                                    Toast.makeText(context, "请先授予悬浮窗权限", Toast.LENGTH_SHORT).show()
+                                if (!ensureOverlayStartPermissions(context)) {
                                     return@SuperSwitch
                                 }
                                 FloatingWindowService.startAutoClickOverlay(context)
@@ -303,15 +301,13 @@ internal fun AutoClickScreen(innerPadding: PaddingValues) {
                     )
                 },
                 onToggleTimerOverlay = {
-                    if (!Settings.canDrawOverlays(context)) {
-                        openOverlaySettings(context)
-                        Toast.makeText(context, "请先授予悬浮窗权限", Toast.LENGTH_SHORT).show()
-                        return@TimerCard
-                    }
                     if (timerOverlayEnabled) {
                         TimerFloatingWindowService.stop(context)
                         Toast.makeText(context, "定时悬浮窗已关闭", Toast.LENGTH_SHORT).show()
                     } else {
+                        if (!ensureOverlayStartPermissions(context)) {
+                            return@TimerCard
+                        }
                         TimerFloatingWindowService.start(context)
                         Toast.makeText(context, "定时悬浮窗已开启", Toast.LENGTH_SHORT).show()
                     }

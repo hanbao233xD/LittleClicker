@@ -9,6 +9,7 @@ import android.net.Uri
 import android.os.Build
 import android.os.PowerManager
 import android.provider.Settings
+import android.widget.Toast
 import com.example.littleclicker.service.AutoClickAccessibilityService
 import java.text.SimpleDateFormat
 import java.util.Calendar
@@ -58,6 +59,25 @@ internal fun isAccessibilityServiceEnabled(context: Context): Boolean {
         Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES
     ) ?: return false
     return settingValue.split(':').any { it.equals(expectedComponentName, ignoreCase = true) }
+}
+
+internal fun ensureOverlayStartPermissions(context: Context): Boolean {
+    if (!Settings.canDrawOverlays(context)) {
+        openOverlaySettings(context)
+        Toast.makeText(context, "请先授予悬浮窗权限", Toast.LENGTH_SHORT).show()
+        return false
+    }
+    if (!isAccessibilityServiceEnabled(context)) {
+        openAccessibilitySettings(context)
+        Toast.makeText(context, "请先开启无障碍服务", Toast.LENGTH_SHORT).show()
+        return false
+    }
+    if (!isIgnoringBatteryOptimizations(context)) {
+        openBatteryOptimizationSettings(context)
+        Toast.makeText(context, "请先允许忽略电池优化", Toast.LENGTH_SHORT).show()
+        return false
+    }
+    return true
 }
 
 internal fun showDateTimePicker(

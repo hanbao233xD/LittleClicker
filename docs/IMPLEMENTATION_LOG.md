@@ -228,3 +228,12 @@
   - `./gradlew :app:assembleDebug` 通过。
   - `./gradlew :app:testDebugUnitTest` 通过。
   - `adb install -r app/build/outputs/apk/debug/app-debug.apk` 安装成功。
+
+## 2026-03-24（悬浮窗启动权限闸门）
+- 启动闸门统一：动作悬浮窗与定时悬浮窗在“启动前”统一执行全量权限检查。
+- 检查项：`悬浮窗权限`、`无障碍服务`、`忽略电池优化` 三项必须全部满足。
+- 引导策略：任一权限缺失时，立即跳转到对应系统设置页并 Toast 提示，且本次不启动悬浮窗。
+- 关闭策略：已开启悬浮窗的关闭操作不受权限闸门影响，仍可直接关闭。
+- 实现位置：
+  - `UiHelpers.ensureOverlayStartPermissions(context)` 新增统一检查与引导逻辑；
+  - `AutoClickScreen` 的动作悬浮窗开关与定时悬浮窗开关均接入该逻辑。
