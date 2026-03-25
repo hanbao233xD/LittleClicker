@@ -650,3 +650,19 @@
   - `adb install -r app/build/outputs/apk/debug/app-debug.apk` 安装成功。
   - `adb logcat -c` 清空日志后执行 `adb shell monkey -p com.example.littleclicker -c android.intent.category.LAUNCHER 1` 成功拉起应用。
   - `adb logcat -d | Select-String "FATAL EXCEPTION|AndroidRuntime|Process: com.example.littleclicker"` 未发现 LittleClicker 进程崩溃（仅有 monkey 命令自身 `AndroidRuntime` 启停日志）。
+
+## 2026-03-25（自动保存体验修复：关闭悬浮窗前强制保存）
+- 问题现象：
+  - 已开启“每 1 秒自动保存”后，用户在改动动作后快速关闭悬浮窗，仍可能看到改动丢失。
+- 根因分析：
+  - 悬浮窗关闭路径仍在执行 `discardUnsavedChanges()`，会把“最近 1 秒内尚未被自动保存循环落盘”的改动回滚。
+- 修复方案：
+  - `FloatingWindowService` 的关闭路径（面板关闭按钮与 `ACTION_STOP`）改为“先 `saveProfile()` 再关闭服务”，移除关闭时回滚行为。
+  - 面板关闭时若即时保存失败，额外弹出失败提示，避免误以为已保存成功。
+- 验证结果：
+  - `./gradlew :app:assembleDebug --no-daemon` 通过（构建期间 Kotlin 增量缓存出现已知告警，已自动回退并成功产物）。
+  - `./gradlew :app:testDebugUnitTest --no-daemon` 通过（同上，已自动回退并成功）。
+  - `adb install -r app/build/outputs/apk/debug/app-debug.apk` 安装成功。
+  - `adb shell run-as com.example.littleclicker cat files/autoclick/profiles/default.json` 连续读取两次（间隔 2 秒），`updatedAt` 从 `1774427173162` 增加到 `1774427175169`，自动保存在持续落盘。
+  - `adb logcat -c` 清空日志后执行 `adb shell monkey -p com.example.littleclicker -c android.intent.category.LAUNCHER 1` 成功拉起应用。
+  - `adb logcat -d | Select-String "FATAL EXCEPTION|AndroidRuntime|Process: com.example.littleclicker"` 未发现 LittleClicker 进程崩溃（仅有 monkey 命令自身 `AndroidRuntime` 启停日志）。

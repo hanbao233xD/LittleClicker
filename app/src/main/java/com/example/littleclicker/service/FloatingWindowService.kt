@@ -149,7 +149,7 @@ class FloatingWindowService : LifecycleService() {
         super.onStartCommand(intent, flags, startId)
         when (intent?.action) {
             ACTION_STOP -> {
-                AutoClickCoordinator.discardUnsavedChanges()
+                persistProfileBeforeClose(showFailureToast = false)
                 stopSelf()
                 return START_NOT_STICKY
             }
@@ -281,8 +281,13 @@ class FloatingWindowService : LifecycleService() {
                             Toast.makeText(this@FloatingWindowService, "已删除动作 #${point.id}", Toast.LENGTH_SHORT).show()
                         },
                         onClosePanel = {
-                            AutoClickCoordinator.discardUnsavedChanges()
-                            Toast.makeText(this@FloatingWindowService, "动作悬浮窗已关闭", Toast.LENGTH_SHORT).show()
+                            val saved = persistProfileBeforeClose(showFailureToast = true)
+                            val tip = if (saved) {
+                                "动作悬浮窗已关闭"
+                            } else {
+                                "动作悬浮窗已关闭（本次保存失败）"
+                            }
+                            Toast.makeText(this@FloatingWindowService, tip, Toast.LENGTH_SHORT).show()
                             stopSelf()
                         },
                         isDarkTheme = isDarkTheme,
@@ -1261,6 +1266,18 @@ class FloatingWindowService : LifecycleService() {
                 updateManagedOverlayView(overlay.view, params)
             }
         }
+    }
+
+    private fun persistProfileBeforeClose(showFailureToast: Boolean): Boolean {
+        val result = AutoClickCoordinator.saveProfile()
+        if (showFailureToast && result.isFailure) {
+            Toast.makeText(
+                this,
+                "自动保存失败：${result.exceptionOrNull()?.message ?: "未知错误"}",
+                Toast.LENGTH_SHORT
+            ).show()
+        }
+        return result.isSuccess
     }
 
     companion object {
