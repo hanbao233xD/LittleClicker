@@ -20,13 +20,16 @@
 # hide the original source file name.
 #-renamesourcefileattribute SourceFile
 
-# Keep enum names used by Gson serialization/deserialization.
+# Gson reflection compatibility for local profile/state persistence.
+-keepattributes Signature,InnerClasses,EnclosingMethod,*Annotation*
+
+# Keep enums used in JSON values.
 -keep enum com.example.littleclicker.autoclick.AutoClickActionType { *; }
 -keep enum com.example.littleclicker.autoclick.AutoClickRunMode { *; }
 
-# Keep JSON field names for local profile/state persistence.
--keepclassmembers class com.example.littleclicker.autoclick.AutoClickPoint { <fields>; }
--keepclassmembers class com.example.littleclicker.autoclick.AutoClickProfile { <fields>; }
--keepclassmembers class com.example.littleclicker.autoclick.AutoClickRepository$AutoClickStorageState { <fields>; }
--keepclassmembers class com.example.littleclicker.autoclick.AutoClickRepository$AutoClickPointPayload { <fields>; }
--keepclassmembers class com.example.littleclicker.autoclick.AutoClickRepository$AutoClickProfilePayload { <fields>; }
+# Keep full model/payload classes to avoid R8 renaming/removing members that Gson relies on.
+-keep class com.example.littleclicker.autoclick.AutoClickPoint { *; }
+-keep class com.example.littleclicker.autoclick.AutoClickProfile { *; }
+-keep class com.example.littleclicker.autoclick.AutoClickRepository$AutoClickStorageState { *; }
+-keep class com.example.littleclicker.autoclick.AutoClickRepository$AutoClickPointPayload { *; }
+-keep class com.example.littleclicker.autoclick.AutoClickRepository$AutoClickProfilePayload { *; }
