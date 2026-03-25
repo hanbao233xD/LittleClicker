@@ -26,11 +26,15 @@ import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import com.example.littleclicker.autoclick.AutoClickCoordinator
+import com.example.littleclicker.update.AppNoticeChecker
+import com.example.littleclicker.update.AppNoticeInfo
 import com.example.littleclicker.update.AppUpdateChecker
 import com.example.littleclicker.update.AppUpdateInfo
 import com.example.littleclicker.ui.AboutScreen
 import com.example.littleclicker.ui.AutoClickScreen
 import androidx.core.content.ContextCompat
+import kotlinx.coroutines.async
+import kotlinx.coroutines.coroutineScope
 import top.yukonga.miuix.kmp.basic.NavigationBar
 import top.yukonga.miuix.kmp.basic.NavigationBarItem
 import top.yukonga.miuix.kmp.basic.Scaffold
@@ -106,6 +110,7 @@ private enum class MainTab(val route: String, val title: String) {
 private fun AppRoot() {
     val navController = rememberNavController()
     val context = LocalContext.current
+    var noticeInfo by remember { mutableStateOf<AppNoticeInfo?>(null) }
     var updateInfo by remember { mutableStateOf<AppUpdateInfo?>(null) }
     val tabs = listOf(MainTab.AUTO_CLICK, MainTab.ABOUT)
     val navBackStackEntry = navController.currentBackStackEntryAsState()
@@ -113,7 +118,12 @@ private fun AppRoot() {
 
     LaunchedEffect(Unit) {
         AutoClickCoordinator.initialize(context)
-        updateInfo = AppUpdateChecker.checkUpdate(localVersionCode = BuildConfig.VERSION_CODE)
+        coroutineScope {
+            val updateTask = async { AppUpdateChecker.checkUpdate(localVersionCode = BuildConfig.VERSION_CODE) }
+            val noticeTask = async { AppNoticeChecker.fetchNotice() }
+            updateInfo = updateTask.await()
+            noticeInfo = noticeTask.await()
+        }
     }
 
     Scaffold(
@@ -151,7 +161,8 @@ private fun AppRoot() {
             composable(MainTab.AUTO_CLICK.route) {
                 AutoClickScreen(
                     innerPadding = innerPadding,
-                    updateInfo = updateInfo
+                    updateInfo = updateInfo,
+                    noticeInfo = noticeInfo,
                 )
             }
             composable(MainTab.ABOUT.route) {

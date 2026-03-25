@@ -44,7 +44,6 @@ import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.PlayArrow
-import androidx.compose.material.icons.filled.Save
 import androidx.compose.material.icons.filled.Stop
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -257,18 +256,6 @@ class FloatingWindowService : LifecycleService() {
                                 "没有可删除的动作"
                             } else {
                                 "已删除最新动作：${removed.actionType.displayName}"
-                            }
-                            Toast.makeText(this@FloatingWindowService, tip, Toast.LENGTH_SHORT).show()
-                        },
-                        onSave = {
-                            if (recording.isRecording) {
-                                AutoClickCoordinator.stopRecording()
-                            }
-                            val result = AutoClickCoordinator.saveProfile()
-                            val tip = if (result.isSuccess) {
-                                "自动点击配置已保存"
-                            } else {
-                                "保存失败：${result.exceptionOrNull()?.message}"
                             }
                             Toast.makeText(this@FloatingWindowService, tip, Toast.LENGTH_SHORT).show()
                         },
@@ -1193,7 +1180,6 @@ private fun FloatingPanel(
     onToggleRecord: () -> Unit,
     onAddAction: () -> Unit,
     onDeleteLatest: () -> Unit,
-    onSave: () -> Unit,
     onEditPoint: (AutoClickPoint) -> Unit,
     onDeletePoint: (AutoClickPoint) -> Unit,
     onClosePanel: () -> Unit,
@@ -1270,13 +1256,6 @@ private fun FloatingPanel(
                     icon = Icons.Filled.Delete,
                     contentDescription = "删除最新动作",
                     onClick = onDeleteLatest,
-                    isDarkTheme = isDarkTheme,
-                    scaleFactor = scaleFactor
-                )
-                PanelActionButton(
-                    icon = Icons.Filled.Save,
-                    contentDescription = "保存",
-                    onClick = onSave,
                     isDarkTheme = isDarkTheme,
                     scaleFactor = scaleFactor
                 )

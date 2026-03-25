@@ -508,3 +508,38 @@
   - 现在位置为“标题介绍”之后、“权限设置”之前（即权限设置上方）。
 - 验证结果：
   - `./gradlew :app:assembleDebug --no-daemon` 通过。
+
+## 2026-03-25（公告功能：启动拉取 + 顶部卡片）
+- 新增公告检查模块：
+  - 新增 `AppNoticeChecker`，启动时请求 `https://littlecold.cn/littleclicker/notice.txt`。
+  - 解析格式：`链接|内容`（`|` 分割，第二段内容支持空格与中文）。
+- 启动接入：
+  - `MainActivity` 启动时并行检查“更新 + 公告”，并传入首页。
+- 首页展示：
+  - `AutoClickScreen` 顶部新增公告卡片（与更新卡片同样样式）：
+    - 主文案：`公告通知，点击查看`
+    - 副文案：公告内容
+  - 点击公告卡片后通过系统浏览器打开公告链接。
+- 验证结果：
+  - `./gradlew :app:assembleDebug --no-daemon` 通过。
+  - `./gradlew :app:testDebugUnitTest --no-daemon` 通过。
+  - `adb install -r app/build/outputs/apk/debug/app-debug.apk` 安装成功。
+  - `adb logcat -c` 清空日志后执行 `adb shell monkey -p com.example.littleclicker -c android.intent.category.LAUNCHER 1` 成功拉起应用。
+  - `adb logcat -d` 未检出 `FATAL EXCEPTION` / `Process: com.example.littleclicker` 崩溃日志。
+
+## 2026-03-25（配置自动保存每 1 秒 + 移除悬浮窗保存按钮）
+- 配置自动保存改为“应用运行即自动执行”：
+  - 在 `AutoClickCoordinator` 新增自动保存循环任务，`initialize()` 后每 `1000ms` 自动落盘当前配置；
+  - 自动保存与手动保存共用保存锁（`saveLock`），避免并发写入配置文件冲突。
+- 启动初始化补强：
+  - 新增 `LittleClickerApplication`，在 `Application.onCreate()` 中调用 `AutoClickCoordinator.initialize(this)`；
+  - `AndroidManifest.xml` 为 `<application>` 增加 `android:name=".LittleClickerApplication"`。
+- 悬浮窗侧栏精简：
+  - `FloatingWindowService` 删除“保存”按钮（保留运行/录制/添加/删除最新/关闭）。
+- 验证结果：
+  - `./gradlew :app:assembleDebug --no-daemon` 通过。
+  - `./gradlew :app:testDebugUnitTest --no-daemon` 通过。
+  - `adb install -r app/build/outputs/apk/debug/app-debug.apk` 安装成功。
+  - `adb logcat -c` 清空日志后执行 `adb shell monkey -p com.example.littleclicker -c android.intent.category.LAUNCHER 1` 成功拉起应用。
+  - `adb logcat -d` 未检出 `FATAL EXCEPTION` / `Process: com.example.littleclicker` 崩溃日志。
+  - 实机验证自动保存：读取 `files/autoclick/profiles/default.json` 的 `updatedAt`，间隔约 2 秒后再次读取，时间差约 `2005ms`，符合持续自动保存预期。

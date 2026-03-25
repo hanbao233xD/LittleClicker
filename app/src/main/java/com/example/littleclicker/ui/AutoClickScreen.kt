@@ -61,6 +61,7 @@ import com.example.littleclicker.autoclick.TimeSyncState
 import com.example.littleclicker.autoclick.displayName
 import com.example.littleclicker.service.FloatingWindowService
 import com.example.littleclicker.service.TimerFloatingWindowService
+import com.example.littleclicker.update.AppNoticeInfo
 import com.example.littleclicker.update.AppUpdateInfo
 import kotlinx.coroutines.delay
 import java.util.Calendar
@@ -82,13 +83,18 @@ private data class PermissionStatus(
 
 @Composable
 internal fun AutoClickScreen(innerPadding: PaddingValues) {
-    AutoClickScreen(innerPadding = innerPadding, updateInfo = null)
+    AutoClickScreen(
+        innerPadding = innerPadding,
+        updateInfo = null,
+        noticeInfo = null
+    )
 }
 
 @Composable
 internal fun AutoClickScreen(
     innerPadding: PaddingValues,
     updateInfo: AppUpdateInfo?,
+    noticeInfo: AppNoticeInfo?,
 ) {
     val context = LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current
@@ -182,11 +188,22 @@ internal fun AutoClickScreen(
             )
         }
 
+        if (noticeInfo != null) {
+            item {
+                ActionLinkCard(
+                    title = "公告",
+                    content = noticeInfo.content,
+                    onClick = { openExternalLink(context, noticeInfo.link) }
+                )
+            }
+        }
+
         if (updateInfo != null) {
             item {
-                UpdateCard(
-                    updateInfo = updateInfo,
-                    onClick = { openUpdateLink(context, updateInfo.downloadUrl) }
+                ActionLinkCard(
+                    title = "检测到更新！点击下载",
+                    content = updateInfo.changelog,
+                    onClick = { openExternalLink(context, updateInfo.downloadUrl) }
                 )
             }
         }
@@ -450,8 +467,9 @@ internal fun AutoClickScreen(
 }
 
 @Composable
-private fun UpdateCard(
-    updateInfo: AppUpdateInfo,
+private fun ActionLinkCard(
+    title: String,
+    content: String,
     onClick: () -> Unit,
 ) {
     val accentColor = MiuixTheme.colorScheme.primary
@@ -473,11 +491,11 @@ private fun UpdateCard(
             verticalArrangement = Arrangement.spacedBy(6.dp)
         ) {
             Text(
-                text = "检测到更新！点击下载",
+                text = title,
                 fontWeight = FontWeight.Bold
             )
             Text(
-                text = updateInfo.changelog,
+                text = content,
                 color = contentColor.copy(alpha = 0.95f)
             )
         }
@@ -611,13 +629,13 @@ private fun computeFitFontSp(widthDp: Float, heightDp: Float): TextUnit {
     return minOf(byWidth, byHeight).coerceIn(36f, 92f).sp
 }
 
-private fun openUpdateLink(context: Context, downloadUrl: String) {
-    val intent = Intent(Intent.ACTION_VIEW, Uri.parse(downloadUrl)).apply {
+private fun openExternalLink(context: Context, link: String) {
+    val intent = Intent(Intent.ACTION_VIEW, Uri.parse(link)).apply {
         addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
     }
     val opened = runCatching { context.startActivity(intent) }.isSuccess
     if (!opened) {
-        Toast.makeText(context, "无法打开下载链接", Toast.LENGTH_SHORT).show()
+        Toast.makeText(context, "无法打开链接", Toast.LENGTH_SHORT).show()
     }
 }
 

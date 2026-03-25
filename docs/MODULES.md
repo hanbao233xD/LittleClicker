@@ -173,17 +173,21 @@
   - 主题：跟随系统深浅模式选择 Miuix 色板，保留灰色半透明视觉风格并提升边框可读性。
   - 对外入口：`start(context)` / `stop(context)` 与 `overlayVisible` 状态流。
 
-## 15. 应用更新检查模块（AppUpdateChecker + AutoClickScreen 顶部卡片）
-- 作用：应用启动时检查线上版本并在首页顶部提示可下载更新。
+## 15. 应用更新与公告检查模块（AppUpdateChecker / AppNoticeChecker + AutoClickScreen 顶部卡片）
+- 作用：应用启动时检查线上版本与公告，并在首页顶部提示可点击入口。
 - 实现方法：
   - 文件：
     - `app/src/main/java/com/example/littleclicker/update/AppUpdateChecker.kt`
+    - `app/src/main/java/com/example/littleclicker/update/AppNoticeChecker.kt`
     - `app/src/main/java/com/example/littleclicker/MainActivity.kt`
     - `app/src/main/java/com/example/littleclicker/ui/AutoClickScreen.kt`
-  - 检查地址：`https://littlecold.cn/littleclicker/version.txt`
+  - 检查地址：
+    - 更新：`https://littlecold.cn/littleclicker/version.txt`
+    - 公告：`https://littlecold.cn/littleclicker/notice.txt`
   - 解析规则：按 `|` 分割三段（`版本号|下载链接|更新日志`）。
+  - 公告规则：按 `|` 分割两段（`链接|内容`）。
   - 比对规则：线上 `versionCode` 大于本地 `BuildConfig.VERSION_CODE` 时判定为有更新。
-  - 展示规则：仅在有更新时，在自动点击页顶部显示 miuix 卡片：
-    - 主文案：`检测到更新！点击下载`
-    - 副文案：服务端返回更新日志
+  - 展示规则：
+    - 有公告时显示“公告通知，点击查看”卡片，副文案为公告内容；
+    - 有更新时显示“检测到更新！点击下载”卡片，副文案为更新日志。
   - 交互：点击卡片后通过系统浏览器打开下载链接。

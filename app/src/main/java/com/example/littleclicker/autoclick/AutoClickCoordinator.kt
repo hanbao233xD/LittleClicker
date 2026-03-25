@@ -20,13 +20,16 @@ object AutoClickCoordinator {
 
     private const val AUTO_NAME_PREFIX = "点击配置_"
     private const val SCHEDULE_POLL_INTERVAL_MS = 30L
+    private const val AUTO_SAVE_INTERVAL_MS = 1_000L
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+    private val saveLock = Any()
 
     private var appContext: Context? = null
     private var initialized = false
     private var scheduleJob: Job? = null
     private var timeSyncJob: Job? = null
+    private var autoSaveJob: Job? = null
     @Volatile
     private var overlayCoordinateOffsetX: Int = 0
     @Volatile
@@ -53,6 +56,7 @@ object AutoClickCoordinator {
         if (initialized) {
             refreshProfiles()
             refreshTimeSyncServerFromProfile()
+            startAutoSaveLoopIfNeeded()
             return
         }
 
@@ -62,6 +66,7 @@ object AutoClickCoordinator {
         refreshTimeSyncServerFromProfile()
         syncNtpTime(force = false)
         restoreScheduleForCurrentProfile()
+        startAutoSaveLoopIfNeeded()
     }
 
     fun refreshProfiles() {
@@ -99,7 +104,7 @@ object AutoClickCoordinator {
         )
 
         return runCatching {
-            AutoClickRepository.saveProfile(context, newProfile, makeActive = true)
+            persistProfileToStorage(context, newProfile, makeActive = true)
             _profile.value = newProfile
             refreshProfiles()
             refreshTimeSyncServerFromProfile()
@@ -115,7 +120,7 @@ object AutoClickCoordinator {
         val context = appContext ?: return Result.failure(IllegalStateException("Coordinator not initialized"))
 
         return runCatching {
-            val deleted = AutoClickRepository.deleteProfile(context, profileId)
+            val deleted = deleteProfileFromStorage(context, profileId)
             if (!deleted) {
                 throw IllegalArgumentException("删除失败：配置不存在")
             }
@@ -135,7 +140,7 @@ object AutoClickCoordinator {
                         startAtMillis = null,
                         updatedAt = now
                     )
-                    AutoClickRepository.saveProfile(context, created, makeActive = true)
+                    persistProfileToStorage(context, created, makeActive = true)
                     created
                 }
 
@@ -182,7 +187,7 @@ object AutoClickCoordinator {
                 name = "${source.name}_副本",
                 updatedAt = now
             )
-            AutoClickRepository.saveProfile(context, duplicated, makeActive = false)
+            persistProfileToStorage(context, duplicated, makeActive = false)
             refreshProfiles()
             duplicated
         }
@@ -662,7 +667,7 @@ object AutoClickCoordinator {
             snapshot
         }
         return runCatching {
-            AutoClickRepository.saveProfile(context, normalized, makeActive = true)
+            persistProfileToStorage(context, normalized, makeActive = true)
             _profile.value = normalized
             refreshProfiles()
         }
@@ -740,6 +745,39 @@ object AutoClickCoordinator {
     private fun cancelSchedule() {
         scheduleJob?.cancel()
         scheduleJob = null
+    }
+
+    private fun startAutoSaveLoopIfNeeded() {
+        if (autoSaveJob?.isActive == true) return
+        autoSaveJob = scope.launch {
+            while (isActive) {
+                delay(AUTO_SAVE_INTERVAL_MS)
+                autoSaveCurrentProfile()
+            }
+        }
+    }
+
+    private fun autoSaveCurrentProfile() {
+        val context = appContext ?: return
+        runCatching {
+            persistProfileToStorage(context, _profile.value, makeActive = true)
+        }
+    }
+
+    private fun persistProfileToStorage(
+        context: Context,
+        profile: AutoClickProfile,
+        makeActive: Boolean,
+    ) {
+        synchronized(saveLock) {
+            AutoClickRepository.saveProfile(context, profile, makeActive)
+        }
+    }
+
+    private fun deleteProfileFromStorage(context: Context, profileId: String): Boolean {
+        return synchronized(saveLock) {
+            AutoClickRepository.deleteProfile(context, profileId)
+        }
     }
 
     private fun nextDefaultProfileName(profiles: List<AutoClickProfile>): String {
