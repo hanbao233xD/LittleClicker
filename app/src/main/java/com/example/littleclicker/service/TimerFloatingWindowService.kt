@@ -54,6 +54,7 @@ class TimerFloatingWindowService : LifecycleService() {
     private lateinit var windowManager: WindowManager
     private var overlayView: ComposeView? = null
     private var overlayLayoutParams: WindowManager.LayoutParams? = null
+    private var hostedByAccessibility: Boolean = false
     private var overlaySize: IntSize = IntSize.Zero
     private var overlayOffset: IntOffset = IntOffset(64, 64)
     private lateinit var viewTreeSavedStateOwner: OverlaySavedStateOwner
@@ -78,9 +79,10 @@ class TimerFloatingWindowService : LifecycleService() {
     }
 
     override fun onDestroy() {
-        overlayView?.let { runCatching { windowManager.removeView(it) } }
+        overlayView?.let { removeManagedOverlayView(it) }
         overlayView = null
         overlayLayoutParams = null
+        hostedByAccessibility = false
         if (::viewTreeSavedStateOwner.isInitialized) {
             viewTreeSavedStateOwner.markDestroyed()
         }
@@ -158,7 +160,7 @@ class TimerFloatingWindowService : LifecycleService() {
             x = overlayOffset.x
             y = overlayOffset.y
         }
-        windowManager.addView(view, params)
+        addManagedOverlayView(view, params)
         overlayView = view
         overlayLayoutParams = params
         _overlayVisible.value = true
@@ -172,7 +174,7 @@ class TimerFloatingWindowService : LifecycleService() {
         if (params.x != bounded.x || params.y != bounded.y) {
             params.x = bounded.x
             params.y = bounded.y
-            runCatching { windowManager.updateViewLayout(view, params) }
+            updateManagedOverlayView(view, params)
         }
     }
 
@@ -187,12 +189,7 @@ class TimerFloatingWindowService : LifecycleService() {
     }
 
     private fun createLayoutParams(width: Int, height: Int): WindowManager.LayoutParams {
-        val type = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY
-        } else {
-            @Suppress("DEPRECATION")
-            WindowManager.LayoutParams.TYPE_PHONE
-        }
+        val type = resolveOverlayWindowType()
         return WindowManager.LayoutParams(
             width,
             height,
@@ -201,6 +198,58 @@ class TimerFloatingWindowService : LifecycleService() {
             PixelFormat.TRANSLUCENT
         ).apply {
             gravity = Gravity.START or Gravity.TOP
+        }
+    }
+
+    private fun resolveOverlayWindowType(): Int {
+        return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            if (AutoClickAccessibilityService.isConnected()) {
+                WindowManager.LayoutParams.TYPE_ACCESSIBILITY_OVERLAY
+            } else {
+                WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY
+            }
+        } else {
+            @Suppress("DEPRECATION")
+            WindowManager.LayoutParams.TYPE_PHONE
+        }
+    }
+
+    private fun addManagedOverlayView(
+        view: ComposeView,
+        params: WindowManager.LayoutParams,
+    ): Boolean {
+        val useAccessibilityOverlay = Build.VERSION.SDK_INT >= Build.VERSION_CODES.O &&
+            params.type == WindowManager.LayoutParams.TYPE_ACCESSIBILITY_OVERLAY
+        if (useAccessibilityOverlay && AutoClickAccessibilityService.addOverlayView(view, params)) {
+            hostedByAccessibility = true
+            return true
+        }
+        if (useAccessibilityOverlay && Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            params.type = WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY
+        }
+        return runCatching {
+            windowManager.addView(view, params)
+            hostedByAccessibility = false
+            true
+        }.getOrElse { false }
+    }
+
+    private fun updateManagedOverlayView(
+        view: ComposeView,
+        params: WindowManager.LayoutParams,
+    ) {
+        if (hostedByAccessibility) {
+            AutoClickAccessibilityService.updateOverlayView(view, params)
+        } else {
+            runCatching { windowManager.updateViewLayout(view, params) }
+        }
+    }
+
+    private fun removeManagedOverlayView(view: ComposeView) {
+        if (hostedByAccessibility) {
+            AutoClickAccessibilityService.removeOverlayView(view)
+        } else {
+            runCatching { windowManager.removeView(view) }
         }
     }
 

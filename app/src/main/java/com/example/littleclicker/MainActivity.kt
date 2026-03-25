@@ -12,6 +12,10 @@ import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.core.app.ActivityCompat
@@ -22,6 +26,8 @@ import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import com.example.littleclicker.autoclick.AutoClickCoordinator
+import com.example.littleclicker.update.AppUpdateChecker
+import com.example.littleclicker.update.AppUpdateInfo
 import com.example.littleclicker.ui.AboutScreen
 import com.example.littleclicker.ui.AutoClickScreen
 import androidx.core.content.ContextCompat
@@ -100,12 +106,14 @@ private enum class MainTab(val route: String, val title: String) {
 private fun AppRoot() {
     val navController = rememberNavController()
     val context = LocalContext.current
+    var updateInfo by remember { mutableStateOf<AppUpdateInfo?>(null) }
     val tabs = listOf(MainTab.AUTO_CLICK, MainTab.ABOUT)
     val navBackStackEntry = navController.currentBackStackEntryAsState()
     val currentDestination = navBackStackEntry.value?.destination
 
     LaunchedEffect(Unit) {
         AutoClickCoordinator.initialize(context)
+        updateInfo = AppUpdateChecker.checkUpdate(localVersionCode = BuildConfig.VERSION_CODE)
     }
 
     Scaffold(
@@ -141,7 +149,10 @@ private fun AppRoot() {
             modifier = Modifier
         ) {
             composable(MainTab.AUTO_CLICK.route) {
-                AutoClickScreen(innerPadding)
+                AutoClickScreen(
+                    innerPadding = innerPadding,
+                    updateInfo = updateInfo
+                )
             }
             composable(MainTab.ABOUT.route) {
                 AboutScreen(innerPadding)

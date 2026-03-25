@@ -3,6 +3,7 @@ package com.example.littleclicker.ui
 import android.app.AlertDialog
 import android.content.Context
 import android.content.Intent
+import android.net.Uri
 import android.provider.Settings
 import android.text.InputType
 import android.widget.EditText
@@ -26,7 +27,6 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.DisposableEffect
@@ -61,6 +61,7 @@ import com.example.littleclicker.autoclick.TimeSyncState
 import com.example.littleclicker.autoclick.displayName
 import com.example.littleclicker.service.FloatingWindowService
 import com.example.littleclicker.service.TimerFloatingWindowService
+import com.example.littleclicker.update.AppUpdateInfo
 import kotlinx.coroutines.delay
 import java.util.Calendar
 import kotlin.random.Random
@@ -81,6 +82,14 @@ private data class PermissionStatus(
 
 @Composable
 internal fun AutoClickScreen(innerPadding: PaddingValues) {
+    AutoClickScreen(innerPadding = innerPadding, updateInfo = null)
+}
+
+@Composable
+internal fun AutoClickScreen(
+    innerPadding: PaddingValues,
+    updateInfo: AppUpdateInfo?,
+) {
     val context = LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current
     var refreshToken by remember { mutableIntStateOf(0) }
@@ -98,7 +107,6 @@ internal fun AutoClickScreen(innerPadding: PaddingValues) {
     }
     val cardContainerColor = MiuixTheme.colorScheme.surfaceContainer
     val successColor = if (isDarkTheme) Color(0xFF7AD7A1) else Color(0xFF1F8B4C)
-    val accentColor = if (isDarkTheme) Color(0xFF78B7FF) else Color(0xFF1D6ED8)
 
     val nowAlignedMillis by produceState(initialValue = AutoClickCoordinator.currentAlignedNowMillis()) {
         while (true) {
@@ -172,6 +180,15 @@ internal fun AutoClickScreen(innerPadding: PaddingValues) {
                 text = "你的抢购、任务助手。本软件永久免费，下载：https://littlecold.cn",
                 color = MiuixTheme.colorScheme.onBackgroundVariant
             )
+        }
+
+        if (updateInfo != null) {
+            item {
+                UpdateCard(
+                    updateInfo = updateInfo,
+                    onClick = { openUpdateLink(context, updateInfo.downloadUrl) }
+                )
+            }
         }
 
         item {
@@ -433,6 +450,41 @@ internal fun AutoClickScreen(innerPadding: PaddingValues) {
 }
 
 @Composable
+private fun UpdateCard(
+    updateInfo: AppUpdateInfo,
+    onClick: () -> Unit,
+) {
+    val accentColor = MiuixTheme.colorScheme.primary
+    val contentColor = Color.White
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        cornerRadius = 20.dp,
+        colors = CardDefaults.defaultColors(
+            color = accentColor,
+            contentColor = contentColor
+        ),
+        onClick = onClick,
+        insideMargin = PaddingValues(0.dp)
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(6.dp)
+        ) {
+            Text(
+                text = "检测到更新！点击下载",
+                fontWeight = FontWeight.Bold
+            )
+            Text(
+                text = updateInfo.changelog,
+                color = contentColor.copy(alpha = 0.95f)
+            )
+        }
+    }
+}
+
+@Composable
 private fun TimerCard(
     nowAlignedMillis: Long,
     runtimeLabel: String,
@@ -557,6 +609,16 @@ private fun computeFitFontSp(widthDp: Float, heightDp: Float): TextUnit {
     val byWidth = widthDp / 6.0f
     val byHeight = heightDp * 0.76f
     return minOf(byWidth, byHeight).coerceIn(36f, 92f).sp
+}
+
+private fun openUpdateLink(context: Context, downloadUrl: String) {
+    val intent = Intent(Intent.ACTION_VIEW, Uri.parse(downloadUrl)).apply {
+        addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+    }
+    val opened = runCatching { context.startActivity(intent) }.isSuccess
+    if (!opened) {
+        Toast.makeText(context, "无法打开下载链接", Toast.LENGTH_SHORT).show()
+    }
 }
 
 private fun showNtpServerConfigDialog(

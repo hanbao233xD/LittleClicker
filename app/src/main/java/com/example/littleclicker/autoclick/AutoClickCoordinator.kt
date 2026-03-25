@@ -27,6 +27,10 @@ object AutoClickCoordinator {
     private var initialized = false
     private var scheduleJob: Job? = null
     private var timeSyncJob: Job? = null
+    @Volatile
+    private var overlayCoordinateOffsetX: Int = 0
+    @Volatile
+    private var overlayCoordinateOffsetY: Int = 0
 
     private val _profile = MutableStateFlow(AutoClickProfile())
     val profile: StateFlow<AutoClickProfile> = _profile.asStateFlow()
@@ -671,6 +675,19 @@ object AutoClickCoordinator {
             scheduledAtMillis = if (state == AutoClickRunState.Scheduled) _profile.value.startAtMillis else null
         )
         _runtime.value = runtime
+    }
+
+    fun updateOverlayCoordinateOffset(offsetX: Int, offsetY: Int) {
+        overlayCoordinateOffsetX = offsetX
+        overlayCoordinateOffsetY = offsetY
+    }
+
+    fun toScreenCoordinateX(windowX: Int): Int {
+        return (windowX + overlayCoordinateOffsetX).coerceAtLeast(0)
+    }
+
+    fun toScreenCoordinateY(windowY: Int): Int {
+        return (windowY + overlayCoordinateOffsetY).coerceAtLeast(0)
     }
 
     private fun restoreScheduleForCurrentProfile() {

@@ -5,6 +5,8 @@ import android.accessibilityservice.AccessibilityServiceInfo
 import android.accessibilityservice.GestureDescription
 import android.graphics.Path
 import android.view.KeyEvent
+import android.view.View
+import android.view.WindowManager
 import android.view.accessibility.AccessibilityEvent
 import android.widget.Toast
 import com.example.littleclicker.autoclick.AutoClickActionType
@@ -30,6 +32,9 @@ class AutoClickAccessibilityService : AccessibilityService() {
 
     private val serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
     private val lock = Any()
+    private val overlayWindowManager: WindowManager by lazy(LazyThreadSafetyMode.NONE) {
+        getSystemService(WINDOW_SERVICE) as WindowManager
+    }
 
     private var runnerJob: Job? = null
     @Volatile
@@ -205,19 +210,23 @@ class AutoClickAccessibilityService : AccessibilityService() {
 
                 val dispatched = when (point.actionType) {
                     AutoClickActionType.Click -> {
+                        val tapX = AutoClickCoordinator.toScreenCoordinateX(point.x)
+                        val tapY = AutoClickCoordinator.toScreenCoordinateY(point.y)
                         dispatchSingleTap(
-                            x = point.x,
-                            y = point.y,
+                            x = tapX,
+                            y = tapY,
                             durationMs = point.touchDurationMs.coerceAtLeast(1L)
                         )
                     }
 
                     AutoClickActionType.Swipe -> {
-                        val endX = point.endX ?: (point.x + 200)
-                        val endY = point.endY ?: point.y
+                        val startX = AutoClickCoordinator.toScreenCoordinateX(point.x)
+                        val startY = AutoClickCoordinator.toScreenCoordinateY(point.y)
+                        val endX = AutoClickCoordinator.toScreenCoordinateX(point.endX ?: (point.x + 200))
+                        val endY = AutoClickCoordinator.toScreenCoordinateY(point.endY ?: point.y)
                         dispatchSwipe(
-                            startX = point.x,
-                            startY = point.y,
+                            startX = startX,
+                            startY = startY,
                             endX = endX,
                             endY = endY,
                             durationMs = point.touchDurationMs.coerceAtLeast(1L)
@@ -325,11 +334,47 @@ class AutoClickAccessibilityService : AccessibilityService() {
         }
     }
 
+    private fun addOverlayViewInternal(view: View, params: WindowManager.LayoutParams): Boolean {
+        return runCatching {
+            if (view.parent != null) return@runCatching true
+            overlayWindowManager.addView(view, params)
+            true
+        }.getOrElse { false }
+    }
+
+    private fun updateOverlayViewInternal(view: View, params: WindowManager.LayoutParams): Boolean {
+        return runCatching {
+            overlayWindowManager.updateViewLayout(view, params)
+            true
+        }.getOrElse { false }
+    }
+
+    private fun removeOverlayViewInternal(view: View): Boolean {
+        return runCatching {
+            overlayWindowManager.removeView(view)
+            true
+        }.getOrElse { false }
+    }
+
     companion object {
         private const val START_TRIGGER_DELAY_MS = 100L
 
         @Volatile
         private var instance: AutoClickAccessibilityService? = null
+
+        fun isConnected(): Boolean = instance != null
+
+        fun addOverlayView(view: View, params: WindowManager.LayoutParams): Boolean {
+            return instance?.addOverlayViewInternal(view, params) ?: false
+        }
+
+        fun updateOverlayView(view: View, params: WindowManager.LayoutParams): Boolean {
+            return instance?.updateOverlayViewInternal(view, params) ?: false
+        }
+
+        fun removeOverlayView(view: View): Boolean {
+            return instance?.removeOverlayViewInternal(view) ?: false
+        }
 
         fun start(profile: AutoClickProfile): Boolean = instance?.startExecution(profile) ?: false
 

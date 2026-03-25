@@ -1,6 +1,6 @@
 # LittleClicker 实现记录
 
-最后更新：2026-03-24
+最后更新：2026-03-25
 
 ## 2026-03-22
 - 初始化 Compose + Navigation 架构。
@@ -421,3 +421,73 @@
   - `releases/2026-03-25/LittleClicker-v1.0-release.apk`
   - `releases/2026-03-25/LittleClicker-v1.0-release.aab`
   - `releases/2026-03-25/checksums.txt`
+
+## 2026-03-25（自动点击坐标修复：对齐悬浮圆点中心）
+- 问题现象：
+  - 部分机型上，自动点击命中点相对悬浮圆点存在“向上偏移”。
+- 修复方案：
+  - 增加“悬浮窗坐标 -> 屏幕坐标”偏移同步：
+    - `FloatingWindowService` 在面板创建/移动后读取 `view.getLocationOnScreen`，计算并上报窗口偏移；
+    - `AutoClickCoordinator` 新增偏移存储与坐标转换接口 `toScreenCoordinateX/Y`。
+  - 执行动作前统一转换：
+    - `AutoClickAccessibilityService` 在点击/滑动派发前，先将点位与终点转换为屏幕绝对坐标再执行手势。
+- 效果：
+  - 自动点击与悬浮圆点中心对齐，滑动起终点也按同一坐标系执行。
+- 验证结果：
+  - `./gradlew :app:assembleDebug --no-daemon` 通过。
+
+## 2026-03-25（悬浮窗类型切换为 TYPE_ACCESSIBILITY_OVERLAY）
+- 变更目标：
+  - 已授予无障碍权限时，悬浮窗窗口类型优先使用 `TYPE_ACCESSIBILITY_OVERLAY`，降低在 Chrome 等应用中的“untrusted touch”拦截风险。
+- 实现方式：
+  - `AutoClickAccessibilityService` 新增 `isConnected()`，用于判断无障碍服务是否已连接；
+  - `FloatingWindowService` 与 `TimerFloatingWindowService` 的 `createLayoutParams` 改为动态选择窗口类型：
+    - 无障碍已连接：`TYPE_ACCESSIBILITY_OVERLAY`
+    - 否则回退：`TYPE_APPLICATION_OVERLAY`
+    - 低版本保留 `TYPE_PHONE` 兼容分支。
+- 验证结果：
+  - `./gradlew :app:compileDebugKotlin --no-daemon` 通过。
+  - `./gradlew :app:assembleDebug --no-daemon` 通过。
+
+## 2026-03-25（修复 TYPE_ACCESSIBILITY_OVERLAY 的 BadToken 闪退）
+- 问题现象：
+  - 启动动作悬浮窗时抛出 `WindowManager$BadTokenException: token null is not valid`。
+  - 根因是 `FloatingWindowService`/`TimerFloatingWindowService` 直接以普通 Service 上下文执行 `addView(TYPE_ACCESSIBILITY_OVERLAY)`。
+- 修复方案：
+  - 新增无障碍服务托管窗口接口（`AutoClickAccessibilityService`）：
+    - `addOverlayView(view, params)`
+    - `updateOverlayView(view, params)`
+    - `removeOverlayView(view)`
+  - 动作悬浮窗与定时悬浮窗改为“优先委托无障碍服务加窗”：
+    - 成功则由无障碍服务维护窗口；
+    - 若委托失败则自动回退到 `TYPE_APPLICATION_OVERLAY`，避免闪退。
+  - 动作悬浮窗新增 `viewHosts` 追踪每个 view 的托管方（无障碍服务 / 系统悬浮窗），更新与移除走对应宿主。
+- 验证结果：
+  - `./gradlew :app:compileDebugKotlin --no-daemon` 通过。
+  - `./gradlew :app:assembleDebug --no-daemon` 通过。
+
+## 2026-03-25（启动检查更新 + 顶部更新卡片）
+- 新增版本检查模块：
+  - 新增 `AppUpdateChecker`，应用启动时请求 `https://littlecold.cn/littleclicker/version.txt`；
+  - 解析格式：`版本号|下载链接|更新日志`（`|` 分割，第三段使用 `limit = 3` 兼容日志内分隔符）。
+- 启动检查接入：
+  - `MainActivity` 在 `AppRoot` 首次 `LaunchedEffect` 中执行检查；
+  - 使用本地 `BuildConfig.VERSION_CODE` 与线上版本号比较，仅在线上版本更高时返回更新信息。
+- 首页顶部提示：
+  - `AutoClickScreen` 新增可选更新信息入参；
+  - 有更新时在页面顶部显示 miuix 强调色卡片；
+  - 主文案：`检测到更新！点击下载`，副文案展示更新日志；
+  - 点击卡片通过系统浏览器打开下载链接。
+- 验证结果：
+  - `./gradlew :app:assembleDebug --no-daemon` 通过。
+  - `./gradlew :app:testDebugUnitTest --no-daemon` 通过。
+  - `adb install -r app/build/outputs/apk/debug/app-debug.apk` 安装成功。
+  - `adb logcat -c` 清空日志后执行 `adb shell monkey -p com.example.littleclicker -c android.intent.category.LAUNCHER 1` 成功拉起应用。
+  - `adb logcat -d` 未检出 `FATAL EXCEPTION` / `Process: com.example.littleclicker` 崩溃日志。
+
+## 2026-03-25（更新卡片位置微调）
+- UI 调整：
+  - 更新提示卡片从页面最顶部下移；
+  - 现在位置为“标题介绍”之后、“权限设置”之前（即权限设置上方）。
+- 验证结果：
+  - `./gradlew :app:assembleDebug --no-daemon` 通过。

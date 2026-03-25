@@ -118,6 +118,7 @@ class FloatingWindowService : LifecycleService() {
     private var panelOffset: IntOffset = IntOffset(72, 180)
 
     private val pointViews = linkedMapOf<Int, PointOverlayGroup>()
+    private val viewHosts = mutableMapOf<ComposeView, OverlayHost>()
     private var profileCollectJob: Job? = null
     private var runtimeCollectJob: Job? = null
     private var recordingCollectJob: Job? = null
@@ -298,9 +299,10 @@ class FloatingWindowService : LifecycleService() {
             y = panelOffset.y
         }
 
-        windowManager.addView(view, params)
+        addManagedOverlayView(view, params)
         panelView = view
         panelLayoutParams = params
+        syncOverlayCoordinateOffset(view, params)
     }
 
     private fun syncPointOverlays(points: List<AutoClickPoint>) {
@@ -451,7 +453,7 @@ class FloatingWindowService : LifecycleService() {
             y = windowOffset.y
         }
         val overlay = PointOverlay(view = view, layoutParams = params)
-        windowManager.addView(view, params)
+        addManagedOverlayView(view, params)
         return ClickPointOverlayGroup(bubble = overlay)
     }
 
@@ -502,7 +504,7 @@ class FloatingWindowService : LifecycleService() {
             x = windowOffset.x
             y = windowOffset.y
         }
-        windowManager.addView(startView, startParams)
+        addManagedOverlayView(startView, startParams)
         val startOverlay = PointOverlay(view = startView, layoutParams = startParams)
 
         val endView = createComposeView().apply {
@@ -555,7 +557,7 @@ class FloatingWindowService : LifecycleService() {
             x = windowOffset.x
             y = windowOffset.y
         }
-        windowManager.addView(endView, endParams)
+        addManagedOverlayView(endView, endParams)
         val endOverlay = PointOverlay(view = endView, layoutParams = endParams)
 
         val lineSpec = buildSwipeLineSpec(start = start, end = end)
@@ -569,17 +571,17 @@ class FloatingWindowService : LifecycleService() {
             y = lineSpec.y
             flags = flags or WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE
         }
-        windowManager.addView(lineView, lineParams)
+        addManagedOverlayView(lineView, lineParams)
         val lineOverlay = PointOverlay(
             view = lineView,
             layoutParams = lineParams,
             alwaysNotTouchable = true
         )
         runCatching {
-            windowManager.removeView(startView)
-            windowManager.removeView(endView)
-            windowManager.addView(startView, startParams)
-            windowManager.addView(endView, endParams)
+            removeManagedOverlayView(startView)
+            removeManagedOverlayView(endView)
+            addManagedOverlayView(startView, startParams)
+            addManagedOverlayView(endView, endParams)
         }
 
         return SwipePointOverlayGroup(
@@ -604,12 +606,12 @@ class FloatingWindowService : LifecycleService() {
         params.y = y
         params.width = width
         params.height = height
-        runCatching { windowManager.updateViewLayout(overlay.view, params) }
+        updateManagedOverlayView(overlay.view, params)
     }
 
     private fun removePointOverlayGroup(group: PointOverlayGroup?) {
         group?.overlays()?.forEach { overlay ->
-            runCatching { windowManager.removeView(overlay.view) }
+            removeManagedOverlayView(overlay.view)
         }
     }
 
@@ -652,7 +654,8 @@ class FloatingWindowService : LifecycleService() {
         if (params.x != bounded.x || params.y != bounded.y) {
             params.x = bounded.x
             params.y = bounded.y
-            windowManager.updateViewLayout(view, params)
+            updateManagedOverlayView(view, params)
+            syncOverlayCoordinateOffset(view, params)
         }
     }
 
@@ -683,6 +686,22 @@ class FloatingWindowService : LifecycleService() {
             x = center.x - bubbleHalfPx,
             y = center.y - bubbleHalfPx
         )
+    }
+
+    private fun syncOverlayCoordinateOffset(
+        view: ComposeView,
+        params: WindowManager.LayoutParams,
+    ) {
+        view.post {
+            val location = IntArray(2)
+            runCatching { view.getLocationOnScreen(location) }
+                .onSuccess {
+                    AutoClickCoordinator.updateOverlayCoordinateOffset(
+                        offsetX = location[0] - params.x,
+                        offsetY = location[1] - params.y
+                    )
+                }
+        }
     }
 
     private fun getScreenSize(): IntSize {
@@ -907,7 +926,7 @@ class FloatingWindowService : LifecycleService() {
             y = 0
             flags = flags or WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE
         }
-        windowManager.addView(view, params)
+        addManagedOverlayView(view, params)
         recordCaptureView = view
         recordCaptureLayoutParams = params
     }
@@ -931,16 +950,11 @@ class FloatingWindowService : LifecycleService() {
         } else {
             params.flags and touchableFlag.inv()
         }
-        runCatching { windowManager.updateViewLayout(view, params) }
+        updateManagedOverlayView(view, params)
     }
 
     private fun createLayoutParams(width: Int, height: Int): WindowManager.LayoutParams {
-        val type = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY
-        } else {
-            @Suppress("DEPRECATION")
-            WindowManager.LayoutParams.TYPE_PHONE
-        }
+        val type = resolveOverlayWindowType()
 
         return WindowManager.LayoutParams(
             width,
@@ -950,6 +964,83 @@ class FloatingWindowService : LifecycleService() {
             PixelFormat.TRANSLUCENT
         ).apply {
             gravity = Gravity.START or Gravity.TOP
+        }
+    }
+
+    private fun resolveOverlayWindowType(): Int {
+        return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            if (AutoClickAccessibilityService.isConnected()) {
+                WindowManager.LayoutParams.TYPE_ACCESSIBILITY_OVERLAY
+            } else {
+                WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY
+            }
+        } else {
+            @Suppress("DEPRECATION")
+            WindowManager.LayoutParams.TYPE_PHONE
+        }
+    }
+
+    private fun addManagedOverlayView(
+        view: ComposeView,
+        params: WindowManager.LayoutParams,
+    ): Boolean {
+        val useAccessibilityOverlay = Build.VERSION.SDK_INT >= Build.VERSION_CODES.O &&
+            params.type == WindowManager.LayoutParams.TYPE_ACCESSIBILITY_OVERLAY
+        if (useAccessibilityOverlay && AutoClickAccessibilityService.addOverlayView(view, params)) {
+            viewHosts[view] = OverlayHost.Accessibility
+            return true
+        }
+
+        if (useAccessibilityOverlay && Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            params.type = WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY
+        }
+
+        return runCatching {
+            windowManager.addView(view, params)
+            viewHosts[view] = OverlayHost.SystemAlert
+            true
+        }.getOrElse {
+            viewHosts.remove(view)
+            false
+        }
+    }
+
+    private fun updateManagedOverlayView(
+        view: ComposeView,
+        params: WindowManager.LayoutParams,
+    ) {
+        when (viewHosts[view]) {
+            OverlayHost.Accessibility -> {
+                AutoClickAccessibilityService.updateOverlayView(view, params)
+            }
+
+            OverlayHost.SystemAlert -> {
+                runCatching { windowManager.updateViewLayout(view, params) }
+            }
+
+            null -> {
+                if (!AutoClickAccessibilityService.updateOverlayView(view, params)) {
+                    runCatching { windowManager.updateViewLayout(view, params) }
+                }
+            }
+        }
+    }
+
+    private fun removeManagedOverlayView(view: ComposeView) {
+        when (viewHosts.remove(view)) {
+            OverlayHost.Accessibility -> {
+                AutoClickAccessibilityService.removeOverlayView(view)
+            }
+
+            OverlayHost.SystemAlert -> {
+                runCatching { windowManager.removeView(view) }
+            }
+
+            null -> {
+                if (!AutoClickAccessibilityService.removeOverlayView(view)) {
+                    runCatching { windowManager.removeView(view) }
+                }
+            }
         }
     }
 
@@ -969,20 +1060,21 @@ class FloatingWindowService : LifecycleService() {
         recordingCollectJob?.cancel()
         recordingCollectJob = null
 
-        panelView?.let { runCatching { windowManager.removeView(it) } }
+        panelView?.let { removeManagedOverlayView(it) }
         panelView = null
         panelLayoutParams = null
 
-        recordCaptureView?.let { runCatching { windowManager.removeView(it) } }
+        recordCaptureView?.let { removeManagedOverlayView(it) }
         recordCaptureView = null
         recordCaptureLayoutParams = null
 
         pointViews.values.forEach { group ->
             group.overlays().forEach { overlay ->
-                runCatching { windowManager.removeView(overlay.view) }
+                removeManagedOverlayView(overlay.view)
             }
         }
         pointViews.clear()
+        viewHosts.clear()
         AutoClickCoordinator.stopRecording()
         _overlayVisible.value = false
     }
@@ -1001,7 +1093,7 @@ class FloatingWindowService : LifecycleService() {
                 } else {
                     params.flags and touchableFlag.inv()
                 }
-                runCatching { windowManager.updateViewLayout(overlay.view, params) }
+                updateManagedOverlayView(overlay.view, params)
             }
         }
     }
@@ -1057,6 +1149,11 @@ private data class PointOverlay(
     val layoutParams: WindowManager.LayoutParams,
     val alwaysNotTouchable: Boolean = false,
 )
+
+private enum class OverlayHost {
+    Accessibility,
+    SystemAlert,
+}
 
 private sealed interface PointOverlayGroup {
     fun overlays(): List<PointOverlay>
