@@ -39,6 +39,8 @@ class AutoClickAccessibilityService : AccessibilityService() {
     private var runnerJob: Job? = null
     @Volatile
     private var paused = false
+    @Volatile
+    private var stopRequested = false
 
     override fun onServiceConnected() {
         super.onServiceConnected()
@@ -88,6 +90,7 @@ class AutoClickAccessibilityService : AccessibilityService() {
                 return false
             }
             paused = false
+            stopRequested = false
             runnerJob = serviceScope.launch {
                 try {
                     AutoClickCoordinator.reportExecutionState(
@@ -114,6 +117,7 @@ class AutoClickAccessibilityService : AccessibilityService() {
                     synchronized(lock) {
                         runnerJob = null
                         paused = false
+                        stopRequested = false
                     }
                 }
             }
@@ -155,6 +159,7 @@ class AutoClickAccessibilityService : AccessibilityService() {
             }
             runnerJob = null
             paused = false
+            stopRequested = true
             activeJob
         }
         job.cancel()
@@ -208,7 +213,7 @@ class AutoClickAccessibilityService : AccessibilityService() {
                 ensureNotCancelled()
                 waitIfPaused()
 
-                val dispatched = when (point.actionType) {
+                val dispatchResult = when (point.actionType) {
                     AutoClickActionType.Click -> {
                         val tapX = AutoClickCoordinator.toScreenCoordinateX(point.x)
                         val tapY = AutoClickCoordinator.toScreenCoordinateY(point.y)
@@ -233,8 +238,21 @@ class AutoClickAccessibilityService : AccessibilityService() {
                         )
                     }
                 }
-                if (!dispatched) {
-                    throw IllegalStateException("动作手势派发失败")
+                when (dispatchResult) {
+                    GestureDispatchResult.Completed -> Unit
+                    GestureDispatchResult.Cancelled -> {
+                        if (stopRequested || !currentCoroutineContext().isActive) {
+                            throw CancellationException("Gesture cancelled by stop request")
+                        }
+                        // 用户触摸导致手势被系统取消时，仅跳过当前动作，不终止整轮任务。
+                        return@repeat
+                    }
+                    GestureDispatchResult.FailedToStart -> {
+                        if (stopRequested || !currentCoroutineContext().isActive) {
+                            throw CancellationException("Gesture cancelled by stop request")
+                        }
+                        throw IllegalStateException("动作手势派发失败")
+                    }
                 }
             }
         }
@@ -256,7 +274,7 @@ class AutoClickAccessibilityService : AccessibilityService() {
         x: Int,
         y: Int,
         durationMs: Long,
-    ): Boolean {
+    ): GestureDispatchResult {
         return suspendCancellableCoroutine { continuation ->
             val path = Path().apply {
                 moveTo(x.toFloat(), y.toFloat())
@@ -273,13 +291,13 @@ class AutoClickAccessibilityService : AccessibilityService() {
                 object : GestureResultCallback() {
                     override fun onCompleted(gestureDescription: GestureDescription?) {
                         if (continuation.isActive) {
-                            continuation.resume(true)
+                            continuation.resume(GestureDispatchResult.Completed)
                         }
                     }
 
                     override fun onCancelled(gestureDescription: GestureDescription?) {
                         if (continuation.isActive) {
-                            continuation.resume(false)
+                            continuation.resume(GestureDispatchResult.Cancelled)
                         }
                     }
                 },
@@ -287,7 +305,7 @@ class AutoClickAccessibilityService : AccessibilityService() {
             )
 
             if (!started && continuation.isActive) {
-                continuation.resume(false)
+                continuation.resume(GestureDispatchResult.FailedToStart)
             }
         }
     }
@@ -298,7 +316,7 @@ class AutoClickAccessibilityService : AccessibilityService() {
         endX: Int,
         endY: Int,
         durationMs: Long,
-    ): Boolean {
+    ): GestureDispatchResult {
         return suspendCancellableCoroutine { continuation ->
             val path = Path().apply {
                 moveTo(startX.toFloat(), startY.toFloat())
@@ -315,13 +333,13 @@ class AutoClickAccessibilityService : AccessibilityService() {
                 object : GestureResultCallback() {
                     override fun onCompleted(gestureDescription: GestureDescription?) {
                         if (continuation.isActive) {
-                            continuation.resume(true)
+                            continuation.resume(GestureDispatchResult.Completed)
                         }
                     }
 
                     override fun onCancelled(gestureDescription: GestureDescription?) {
                         if (continuation.isActive) {
-                            continuation.resume(false)
+                            continuation.resume(GestureDispatchResult.Cancelled)
                         }
                     }
                 },
@@ -329,7 +347,7 @@ class AutoClickAccessibilityService : AccessibilityService() {
             )
 
             if (!started && continuation.isActive) {
-                continuation.resume(false)
+                continuation.resume(GestureDispatchResult.FailedToStart)
             }
         }
     }
@@ -384,4 +402,10 @@ class AutoClickAccessibilityService : AccessibilityService() {
 
         fun stop(): Boolean = instance?.stopExecution() ?: false
     }
+}
+
+private enum class GestureDispatchResult {
+    Completed,
+    Cancelled,
+    FailedToStart,
 }

@@ -466,6 +466,23 @@
   - `./gradlew :app:compileDebugKotlin --no-daemon` 通过。
   - `./gradlew :app:assembleDebug --no-daemon` 通过。
 
+## 2026-03-25（运行稳定性修复：滑动中停止与手动触控干预）
+- 问题1：执行滑动动作时点击停止，无法稳定按“正常停止”结束。
+- 问题2：运行过程中用户触摸屏幕，会触发 `dispatchGesture.onCancelled`，任务直接失败停止。
+- 修复内容（`AutoClickAccessibilityService`）：
+  - 新增 `stopRequested` 标志，`stopExecution()` 时置位；
+  - 手势分发结果从 `Boolean` 升级为 `GestureDispatchResult`（`Completed/Cancelled/FailedToStart`）；
+  - 对 `Cancelled` 分支改为：
+    - 若为主动停止或协程已取消 => 按取消流程退出（Idle）；
+    - 否则仅跳过当前动作，不再将整轮任务判定失败。
+  - `FailedToStart` 仍按异常失败处理（避免静默掩盖真实故障）。
+- 预期效果：
+  - 滑动过程中点停止会走正常停止路径，不再误入失败状态；
+  - 用户手动触摸屏幕不会导致自动点击任务整体退出。
+- 验证结果：
+  - `./gradlew :app:compileDebugKotlin --no-daemon` 通过。
+  - `./gradlew :app:assembleDebug --no-daemon` 通过。
+
 ## 2026-03-25（启动检查更新 + 顶部更新卡片）
 - 新增版本检查模块：
   - 新增 `AppUpdateChecker`，应用启动时请求 `https://littlecold.cn/littleclicker/version.txt`；
