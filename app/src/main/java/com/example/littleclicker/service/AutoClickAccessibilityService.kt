@@ -262,11 +262,11 @@ class AutoClickAccessibilityService : AccessibilityService() {
         }
     }
 
-    private fun replayRecordedAction(point: AutoClickPoint): Boolean {
+    private fun replayRecordedAction(point: AutoClickPoint, triggerDelayMs: Long): Boolean {
         val canReplay = synchronized(lock) { runnerJob?.isActive != true }
         if (!canReplay) return false
         serviceScope.launch {
-            delay(RECORD_REPLAY_TRIGGER_DELAY_MS)
+            delay(triggerDelayMs.coerceAtLeast(0L))
             val replayPoint = if (
                 point.actionType == AutoClickActionType.Swipe &&
                 point.touchDurationMs < RECORD_REPLAY_MIN_SWIPE_DURATION_MS
@@ -418,8 +418,11 @@ class AutoClickAccessibilityService : AccessibilityService() {
             return instance?.removeOverlayViewInternal(view) ?: false
         }
 
-        fun replayRecordedAction(point: AutoClickPoint): Boolean {
-            return instance?.replayRecordedAction(point) ?: false
+        fun replayRecordedAction(
+            point: AutoClickPoint,
+            triggerDelayMs: Long = RECORD_REPLAY_TRIGGER_DELAY_MS,
+        ): Boolean {
+            return instance?.replayRecordedAction(point, triggerDelayMs) ?: false
         }
 
         fun start(profile: AutoClickProfile): Boolean = instance?.startExecution(profile) ?: false

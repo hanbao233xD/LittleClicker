@@ -604,3 +604,19 @@
   - `adb logcat -c` 清空日志后执行 `adb shell monkey -p com.example.littleclicker -c android.intent.category.LAUNCHER 1` 成功拉起应用。
   - `adb logcat -d` 未检出 `FATAL EXCEPTION` / `Process: com.example.littleclicker` 崩溃日志。
   - 实机验证自动保存：读取 `files/autoclick/profiles/default.json` 的 `updatedAt`，间隔约 2 秒后再次读取，时间差约 `2005ms`，符合持续自动保存预期。
+
+## 2026-03-25（录制滑动延迟 200ms 再模拟）
+- 需求实现：
+  - 录制模式下，用户完成滑动动作后不再立即回放，改为等待 `200ms` 再模拟该滑动。
+- 代码改动：
+  - `FloatingWindowService` 按动作类型区分回放触发延迟：
+    - 点击维持 `80ms`
+    - 滑动改为 `200ms`
+  - `AutoClickAccessibilityService.replayRecordedAction` 新增可传入 `triggerDelayMs` 参数，供录制层按动作类型指定延迟。
+  - `FloatingWindowService.armRecordReplayPassThroughWindow` 增加 `triggerDelayMs` 参数，穿透窗口时长改为“触发延迟 + 手势时长 + 额外缓冲”，避免等待阶段结束后录制层过早恢复触摸拦截。
+- 验证结果：
+  - `./gradlew :app:assembleDebug --no-daemon` 通过。
+  - `./gradlew :app:testDebugUnitTest --no-daemon` 通过。
+  - `adb install -r app/build/outputs/apk/debug/app-debug.apk` 安装成功。
+  - `adb logcat -c` 清空日志后执行 `adb shell monkey -p com.example.littleclicker -c android.intent.category.LAUNCHER 1` 成功拉起应用。
+  - `adb logcat -d | Select-String "FATAL EXCEPTION|AndroidRuntime|Process: com.example.littleclicker"` 未发现 LittleClicker 进程崩溃（仅有 monkey 命令自身 `AndroidRuntime` 启停日志）。

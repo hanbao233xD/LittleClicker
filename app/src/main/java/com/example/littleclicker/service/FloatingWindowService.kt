@@ -924,9 +924,19 @@ class FloatingWindowService : LifecycleService() {
                                         Toast.LENGTH_SHORT
                                     ).show()
                                     if (AutoClickCoordinator.profile.value.recordingMode == AutoClickRecordingMode.RecordAndPassThrough) {
-                                        val replayed = AutoClickAccessibilityService.replayRecordedAction(recorded)
+                                        val replayDelayMs = when (recorded.actionType) {
+                                            AutoClickActionType.Click -> RECORDED_CLICK_REPLAY_DELAY_MS
+                                            AutoClickActionType.Swipe -> RECORDED_SWIPE_REPLAY_DELAY_MS
+                                        }
+                                        val replayed = AutoClickAccessibilityService.replayRecordedAction(
+                                            point = recorded,
+                                            triggerDelayMs = replayDelayMs
+                                        )
                                         if (replayed) {
-                                            armRecordReplayPassThroughWindow(recorded.touchDurationMs)
+                                            armRecordReplayPassThroughWindow(
+                                                triggerDelayMs = replayDelayMs,
+                                                touchDurationMs = recorded.touchDurationMs
+                                            )
                                         } else {
                                             Toast.makeText(
                                                 this@FloatingWindowService,
@@ -986,9 +996,12 @@ class FloatingWindowService : LifecycleService() {
         return SystemClock.uptimeMillis() <= ignoreRecordInputUntilMillis
     }
 
-    private fun armRecordReplayPassThroughWindow(touchDurationMs: Long) {
+    private fun armRecordReplayPassThroughWindow(triggerDelayMs: Long, touchDurationMs: Long) {
         val now = SystemClock.uptimeMillis()
-        val until = now + touchDurationMs.coerceAtLeast(1L) + RECORD_CAPTURE_IGNORE_EXTRA_MS
+        val until = now +
+            triggerDelayMs.coerceAtLeast(0L) +
+            touchDurationMs.coerceAtLeast(1L) +
+            RECORD_CAPTURE_IGNORE_EXTRA_MS
         ignoreRecordInputUntilMillis = max(ignoreRecordInputUntilMillis, until)
 
         setRecordCaptureTouchable(false)
@@ -1179,6 +1192,8 @@ class FloatingWindowService : LifecycleService() {
         const val ACTION_STOP = "com.example.littleclicker.action.STOP_FLOATING_WINDOW"
         private const val RECORDED_TAP_DURATION_MS = 50L
         private const val RECORDED_SWIPE_MIN_DURATION_MS = 40L
+        private const val RECORDED_CLICK_REPLAY_DELAY_MS = 80L
+        private const val RECORDED_SWIPE_REPLAY_DELAY_MS = 200L
         private const val RECORDED_SWIPE_MIN_DISTANCE_PX = 12.0
         private const val RECORDED_SWIPE_QUICK_DISTANCE_PX = 8.0
         private const val RECORDED_SWIPE_QUICK_DURATION_MS = 120L
