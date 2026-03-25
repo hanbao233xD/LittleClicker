@@ -605,6 +605,24 @@
   - `adb logcat -d` 未检出 `FATAL EXCEPTION` / `Process: com.example.littleclicker` 崩溃日志。
   - 实机验证自动保存：读取 `files/autoclick/profiles/default.json` 的 `updatedAt`，间隔约 2 秒后再次读取，时间差约 `2005ms`，符合持续自动保存预期。
 
+## 2026-03-25（Release 混淆修复：配置持久化相关 keep 规则加固）
+- 问题背景：
+  - 用户反馈 release 包在开启混淆后，配置保存/读取表现异常，怀疑与 R8 混淆导致的 Gson 反射不兼容有关。
+- 修复内容（`app/proguard-rules.pro`）：
+  - 增加 `-keepattributes Signature,InnerClasses,EnclosingMethod,*Annotation*`；
+  - 对配置持久化模型与 payload 由“仅保留字段”升级为“整类保留”：
+    - `AutoClickPoint`
+    - `AutoClickProfile`
+    - `AutoClickRepository$AutoClickStorageState`
+    - `AutoClickRepository$AutoClickPointPayload`
+    - `AutoClickRepository$AutoClickProfilePayload`
+  - 保留 JSON 使用的枚举：
+    - `AutoClickActionType`
+    - `AutoClickRunMode`
+- 验证结果：
+  - `./gradlew :app:assembleRelease --no-daemon` 通过。
+  - `adb install -r app/build/outputs/apk/release/app-release.apk` 安装成功。
+
 ## 2026-03-25（录制滑动延迟 200ms 再模拟）
 - 需求实现：
   - 录制模式下，用户完成滑动动作后不再立即回放，改为等待 `200ms` 再模拟该滑动。
