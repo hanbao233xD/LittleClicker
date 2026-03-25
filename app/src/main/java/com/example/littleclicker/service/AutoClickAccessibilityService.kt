@@ -213,31 +213,7 @@ class AutoClickAccessibilityService : AccessibilityService() {
                 ensureNotCancelled()
                 waitIfPaused()
 
-                val dispatchResult = when (point.actionType) {
-                    AutoClickActionType.Click -> {
-                        val tapX = AutoClickCoordinator.toScreenCoordinateX(point.x)
-                        val tapY = AutoClickCoordinator.toScreenCoordinateY(point.y)
-                        dispatchSingleTap(
-                            x = tapX,
-                            y = tapY,
-                            durationMs = point.touchDurationMs.coerceAtLeast(1L)
-                        )
-                    }
-
-                    AutoClickActionType.Swipe -> {
-                        val startX = AutoClickCoordinator.toScreenCoordinateX(point.x)
-                        val startY = AutoClickCoordinator.toScreenCoordinateY(point.y)
-                        val endX = AutoClickCoordinator.toScreenCoordinateX(point.endX ?: (point.x + 200))
-                        val endY = AutoClickCoordinator.toScreenCoordinateY(point.endY ?: point.y)
-                        dispatchSwipe(
-                            startX = startX,
-                            startY = startY,
-                            endX = endX,
-                            endY = endY,
-                            durationMs = point.touchDurationMs.coerceAtLeast(1L)
-                        )
-                    }
-                }
+                val dispatchResult = dispatchPoint(point)
                 when (dispatchResult) {
                     GestureDispatchResult.Completed -> Unit
                     GestureDispatchResult.Cancelled -> {
@@ -256,6 +232,52 @@ class AutoClickAccessibilityService : AccessibilityService() {
                 }
             }
         }
+    }
+
+    private suspend fun dispatchPoint(point: AutoClickPoint): GestureDispatchResult {
+        return when (point.actionType) {
+            AutoClickActionType.Click -> {
+                val tapX = AutoClickCoordinator.toScreenCoordinateX(point.x)
+                val tapY = AutoClickCoordinator.toScreenCoordinateY(point.y)
+                dispatchSingleTap(
+                    x = tapX,
+                    y = tapY,
+                    durationMs = point.touchDurationMs.coerceAtLeast(1L)
+                )
+            }
+
+            AutoClickActionType.Swipe -> {
+                val startX = AutoClickCoordinator.toScreenCoordinateX(point.x)
+                val startY = AutoClickCoordinator.toScreenCoordinateY(point.y)
+                val endX = AutoClickCoordinator.toScreenCoordinateX(point.endX ?: (point.x + 200))
+                val endY = AutoClickCoordinator.toScreenCoordinateY(point.endY ?: point.y)
+                dispatchSwipe(
+                    startX = startX,
+                    startY = startY,
+                    endX = endX,
+                    endY = endY,
+                    durationMs = point.touchDurationMs.coerceAtLeast(1L)
+                )
+            }
+        }
+    }
+
+    private fun replayRecordedAction(point: AutoClickPoint): Boolean {
+        val canReplay = synchronized(lock) { runnerJob?.isActive != true }
+        if (!canReplay) return false
+        serviceScope.launch {
+            delay(RECORD_REPLAY_TRIGGER_DELAY_MS)
+            val replayPoint = if (
+                point.actionType == AutoClickActionType.Swipe &&
+                point.touchDurationMs < RECORD_REPLAY_MIN_SWIPE_DURATION_MS
+            ) {
+                point.copy(touchDurationMs = RECORD_REPLAY_MIN_SWIPE_DURATION_MS)
+            } else {
+                point
+            }
+            dispatchPoint(replayPoint)
+        }
+        return true
     }
 
     private suspend fun waitIfPaused() {
@@ -376,6 +398,8 @@ class AutoClickAccessibilityService : AccessibilityService() {
 
     companion object {
         private const val START_TRIGGER_DELAY_MS = 100L
+        private const val RECORD_REPLAY_TRIGGER_DELAY_MS = 80L
+        private const val RECORD_REPLAY_MIN_SWIPE_DURATION_MS = 40L
 
         @Volatile
         private var instance: AutoClickAccessibilityService? = null
@@ -392,6 +416,10 @@ class AutoClickAccessibilityService : AccessibilityService() {
 
         fun removeOverlayView(view: View): Boolean {
             return instance?.removeOverlayViewInternal(view) ?: false
+        }
+
+        fun replayRecordedAction(point: AutoClickPoint): Boolean {
+            return instance?.replayRecordedAction(point) ?: false
         }
 
         fun start(profile: AutoClickProfile): Boolean = instance?.startExecution(profile) ?: false

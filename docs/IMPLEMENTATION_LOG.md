@@ -527,6 +527,67 @@
   - `adb logcat -c` 清空日志后执行 `adb shell monkey -p com.example.littleclicker -c android.intent.category.LAUNCHER 1` 成功拉起应用。
   - `adb logcat -d` 未检出 `FATAL EXCEPTION` / `Process: com.example.littleclicker` 崩溃日志。
 
+## 2026-03-25（录制后自动模拟动作）
+- 需求实现：
+  - 用户每录制完成一个动作后，立即自动模拟执行该动作，便于继续录制下一步。
+- 代码改动：
+  - `AutoClickAccessibilityService` 新增单动作回放入口（复用现有点击/滑动手势派发逻辑），录制回放触发时延约 `80ms`。
+  - `FloatingWindowService` 在录制成功后调用单动作回放。
+  - 新增录制输入忽略窗口：自动回放期间短暂忽略录制触摸采集，避免把模拟动作再次录入形成循环。
+- 验证结果：
+  - `./gradlew clean :app:assembleDebug --no-daemon` 通过。
+  - `./gradlew :app:testDebugUnitTest --no-daemon` 通过。
+  - `adb install -r app/build/outputs/apk/debug/app-debug.apk` 安装成功。
+  - `adb logcat -c` 清空日志后执行 `adb shell monkey -p com.example.littleclicker -c android.intent.category.LAUNCHER 1` 成功拉起应用。
+  - `adb logcat -d` 未检出 `FATAL EXCEPTION` / `Process: com.example.littleclicker` 崩溃日志。
+
+## 2026-03-25（录制方式开关 + 录制穿透修复）
+- 问题修复：
+  - 录制成功后虽然提示“已录制”，但未对底层应用产生可见模拟点击。
+- 新增录制方式：
+  - 在“运行方式”下方新增 `录制方式` 下拉，选项：
+    - `仅录制`
+    - `录制时穿透到应用`
+  - 配置已持久化到 `AutoClickProfile.recordingMode`，历史配置自动兼容默认到“录制时穿透到应用”。
+- 穿透逻辑修复：
+  - 录制为“穿透模式”时，每录制一条动作立即触发单动作回放；
+  - 回放窗口内临时将录制层切到不可触摸，使模拟触摸透传到底层 App；
+  - 同时维持输入忽略窗口，避免回放动作被重复录入。
+- 验证结果：
+  - `./gradlew clean :app:assembleDebug --no-daemon` 通过。
+  - `./gradlew :app:testDebugUnitTest --no-daemon` 通过。
+  - `adb install -r app/build/outputs/apk/debug/app-debug.apk` 安装成功。
+  - `adb logcat -c` 清空日志后执行 `adb shell monkey -p com.example.littleclicker -c android.intent.category.LAUNCHER 1` 成功拉起应用。
+  - `adb logcat -d` 未检出 `FATAL EXCEPTION` / `Process: com.example.littleclicker` 崩溃日志。
+
+## 2026-03-25（滑动模拟修复：按手势时长录制）
+- 问题现象：
+  - 录制滑动后回放效果不稳定，表现为“提示已录制，但滑动未正常模拟”。
+- 修复方案：
+  - 录制层不再固定使用 `50ms` 触摸时长；
+  - 改为按真实手势按下-抬起时长记录，并对滑动设置最小时长下限（`220ms`）；
+  - 回放入口也增加滑动最小时长保护，避免被系统识别为近似点击。
+- 验证结果：
+  - `./gradlew clean :app:assembleDebug --no-daemon` 通过。
+  - `./gradlew :app:testDebugUnitTest --no-daemon` 通过。
+  - `adb install -r app/build/outputs/apk/debug/app-debug.apk` 安装成功。
+  - `adb logcat -c` 清空日志后执行 `adb shell monkey -p com.example.littleclicker -c android.intent.category.LAUNCHER 1` 成功拉起应用。
+  - `adb logcat -d` 未检出 `FATAL EXCEPTION` / `Process: com.example.littleclicker` 崩溃日志。
+
+## 2026-03-25（短滑动与跨点位滑动回放修复）
+- 问题现象：
+  - 慢速长滑动可回放，但快速短滑动与路径经过悬浮点位时回放失败。
+- 修复方案：
+  - 短滑动识别优化：滑动判定阈值从“仅距离 24px”改为“距离阈值 + 快速短滑动判定”组合规则；
+  - 回放时长策略优化：滑动最小时长下调，避免快速短滑动被强制拉慢；
+  - 遮挡修复：新创建的点位覆盖层在录制态下即初始化为不可触摸，避免“刚录完就回放”时被新点位短暂遮挡。
+- 验证结果：
+  - `./gradlew clean :app:assembleDebug --no-daemon` 通过。
+  - `./gradlew :app:testDebugUnitTest --no-daemon` 通过。
+  - `adb install -r app/build/outputs/apk/debug/app-debug.apk` 安装成功。
+  - `adb logcat -c` 清空日志后执行 `adb shell monkey -p com.example.littleclicker -c android.intent.category.LAUNCHER 1` 成功拉起应用。
+  - `adb logcat -d` 未检出 `FATAL EXCEPTION` / `Process: com.example.littleclicker` 崩溃日志。
+
 ## 2026-03-25（配置自动保存每 1 秒 + 移除悬浮窗保存按钮）
 - 配置自动保存改为“应用运行即自动执行”：
   - 在 `AutoClickCoordinator` 新增自动保存循环任务，`initialize()` 后每 `1000ms` 自动落盘当前配置；

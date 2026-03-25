@@ -56,6 +56,7 @@ import com.example.littleclicker.R
 import com.example.littleclicker.autoclick.AutoClickActionType
 import com.example.littleclicker.autoclick.AutoClickCoordinator
 import com.example.littleclicker.autoclick.AutoClickPoint
+import com.example.littleclicker.autoclick.AutoClickRecordingMode
 import com.example.littleclicker.autoclick.AutoClickRunMode
 import com.example.littleclicker.autoclick.TimeSyncState
 import com.example.littleclicker.autoclick.displayName
@@ -158,9 +159,14 @@ internal fun AutoClickScreen(
     val pendingStatuses = statuses.filterNot { it.granted }
     val randomTip = remember(refreshToken) { context.loadRandomAutoClickTip() }
     val runModeItems = listOf("运行一次", "循环运行直至手动停止")
+    val recordModeItems = listOf("仅录制", "录制时穿透到应用")
     val selectedRunModeIndex = when (profile.runMode) {
         AutoClickRunMode.RunOnce -> 0
         AutoClickRunMode.LoopUntilStopped -> 1
+    }
+    val selectedRecordModeIndex = when (profile.recordingMode) {
+        AutoClickRecordingMode.RecordOnly -> 0
+        AutoClickRecordingMode.RecordAndPassThrough -> 1
     }
 
     LazyColumn(
@@ -288,6 +294,20 @@ internal fun AutoClickScreen(
                                     AutoClickRunMode.LoopUntilStopped
                                 }
                                 AutoClickCoordinator.updateRunMode(mode)
+                            }
+                        )
+                        WindowDropdown(
+                            items = recordModeItems,
+                            selectedIndex = selectedRecordModeIndex,
+                            title = "录制方式",
+                            summary = "穿透模式下：录制一步，自动模拟一步",
+                            onSelectedIndexChange = { index ->
+                                val mode = if (index == 0) {
+                                    AutoClickRecordingMode.RecordOnly
+                                } else {
+                                    AutoClickRecordingMode.RecordAndPassThrough
+                                }
+                                AutoClickCoordinator.updateRecordingMode(mode)
                             }
                         )
                     }

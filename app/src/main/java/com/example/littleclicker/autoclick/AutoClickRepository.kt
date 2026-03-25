@@ -38,6 +38,7 @@ object AutoClickRepository {
         val points: List<AutoClickPointPayload>? = null,
         val cycleCount: Int? = null,
         val runMode: String? = null,
+        val recordingMode: String? = null,
         val ntpServerHost: String? = null,
         val scheduleRuleHms: String? = null,
         val startAtMillis: Long? = null,
@@ -157,6 +158,7 @@ object AutoClickRepository {
             points = normalizedPoints,
             cycleCount = (payload.cycleCount ?: 1).coerceAtLeast(1),
             runMode = parseRunMode(payload.runMode),
+            recordingMode = parseRecordingMode(payload.recordingMode),
             ntpServerHost = payload.ntpServerHost?.takeIf { it.isNotBlank() } ?: DEFAULT_NTP_SERVER_HOST,
             scheduleRuleHms = normalizeScheduleRuleHms(payload.scheduleRuleHms),
             startAtMillis = payload.startAtMillis,
@@ -232,6 +234,14 @@ object AutoClickRepository {
             AutoClickRunMode.LoopUntilStopped
         } else {
             AutoClickRunMode.RunOnce
+        }
+    }
+
+    private fun parseRecordingMode(raw: String?): AutoClickRecordingMode {
+        return if (raw.equals("RecordOnly", ignoreCase = true)) {
+            AutoClickRecordingMode.RecordOnly
+        } else {
+            AutoClickRecordingMode.RecordAndPassThrough
         }
     }
 

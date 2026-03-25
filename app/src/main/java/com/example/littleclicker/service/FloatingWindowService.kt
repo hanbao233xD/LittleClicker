@@ -6,6 +6,7 @@ import android.content.Context
 import android.content.Intent
 import android.graphics.PixelFormat
 import android.os.Build
+import android.os.SystemClock
 import android.provider.Settings
 import android.text.InputType
 import android.view.Gravity
@@ -90,12 +91,15 @@ import androidx.savedstate.setViewTreeSavedStateRegistryOwner
 import com.example.littleclicker.autoclick.AutoClickCoordinator
 import com.example.littleclicker.autoclick.AutoClickActionType
 import com.example.littleclicker.autoclick.AutoClickPoint
+import com.example.littleclicker.autoclick.AutoClickRecordingMode
 import com.example.littleclicker.autoclick.AutoClickRunState
 import com.example.littleclicker.autoclick.displayName
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlin.math.hypot
 import kotlin.math.max
@@ -121,7 +125,10 @@ class FloatingWindowService : LifecycleService() {
     private var profileCollectJob: Job? = null
     private var runtimeCollectJob: Job? = null
     private var recordingCollectJob: Job? = null
+    private var recordCapturePassthroughJob: Job? = null
     private var pointEditDialog: AlertDialog? = null
+    @Volatile
+    private var ignoreRecordInputUntilMillis: Long = 0L
 
     private val bubbleSizePx by lazy {
         (76f * POINT_BUBBLE_SCALE_FACTOR * resources.displayMetrics.density).roundToInt()
@@ -196,7 +203,12 @@ class FloatingWindowService : LifecycleService() {
         recordingCollectJob?.cancel()
         recordingCollectJob = lifecycleScope.launch {
             AutoClickCoordinator.recording.collect { recording ->
-                setRecordCaptureTouchable(recording.isRecording)
+                if (!recording.isRecording) {
+                    recordCapturePassthroughJob?.cancel()
+                    recordCapturePassthroughJob = null
+                }
+                val shouldCaptureInput = recording.isRecording && !isRecordCaptureTemporarilyPassthrough()
+                setRecordCaptureTouchable(shouldCaptureInput)
                 val touchable = !recording.isRecording &&
                     AutoClickCoordinator.runtime.value.state != AutoClickRunState.Running &&
                     AutoClickCoordinator.runtime.value.state != AutoClickRunState.Paused
@@ -438,6 +450,7 @@ class FloatingWindowService : LifecycleService() {
             val windowOffset = centerToWindowOffset(center)
             x = windowOffset.x
             y = windowOffset.y
+            applyPointOverlayTouchableFlag(this, shouldPointOverlaysBeTouchableNow())
         }
         val overlay = PointOverlay(view = view, layoutParams = params)
         addManagedOverlayView(view, params)
@@ -490,6 +503,7 @@ class FloatingWindowService : LifecycleService() {
             val windowOffset = centerToWindowOffset(start)
             x = windowOffset.x
             y = windowOffset.y
+            applyPointOverlayTouchableFlag(this, shouldPointOverlaysBeTouchableNow())
         }
         addManagedOverlayView(startView, startParams)
         val startOverlay = PointOverlay(view = startView, layoutParams = startParams)
@@ -543,6 +557,7 @@ class FloatingWindowService : LifecycleService() {
             val windowOffset = centerToWindowOffset(end)
             x = windowOffset.x
             y = windowOffset.y
+            applyPointOverlayTouchableFlag(this, shouldPointOverlaysBeTouchableNow())
         }
         addManagedOverlayView(endView, endParams)
         val endOverlay = PointOverlay(view = endView, layoutParams = endParams)
@@ -858,7 +873,9 @@ class FloatingWindowService : LifecycleService() {
                             awaitEachGesture {
                                 val down = awaitFirstDown(requireUnconsumed = false)
                                 val start = down.position
+                                val downUptime = down.uptimeMillis
                                 var last = start
+                                var upUptime = downUptime
                                 var moved = false
 
                                 while (true) {
@@ -872,24 +889,32 @@ class FloatingWindowService : LifecycleService() {
                                     }
                                     if (change.changedToUpIgnoreConsumed()) {
                                         last = change.position
+                                        upUptime = change.uptimeMillis
                                         break
                                     }
                                     if (!change.pressed) {
                                         break
                                     }
                                 }
+                                if (shouldIgnoreRecordedInput()) return@awaitEachGesture
 
-                                val actionType = if (isSwipeGesture(start, last, moved)) {
+                                val rawDuration = (upUptime - downUptime).coerceAtLeast(1L)
+                                val actionType = if (isSwipeGesture(start, last, moved, rawDuration)) {
                                     AutoClickActionType.Swipe
                                 } else {
                                     AutoClickActionType.Click
+                                }
+                                val replayDuration = when (actionType) {
+                                    AutoClickActionType.Click -> RECORDED_TAP_DURATION_MS
+                                    AutoClickActionType.Swipe -> rawDuration.coerceAtLeast(RECORDED_SWIPE_MIN_DURATION_MS)
                                 }
                                 val recorded = AutoClickCoordinator.addRecordedAction(
                                     actionType = actionType,
                                     startX = start.x.roundToInt(),
                                     startY = start.y.roundToInt(),
                                     endX = if (actionType == AutoClickActionType.Swipe) last.x.roundToInt() else null,
-                                    endY = if (actionType == AutoClickActionType.Swipe) last.y.roundToInt() else null
+                                    endY = if (actionType == AutoClickActionType.Swipe) last.y.roundToInt() else null,
+                                    touchDurationMs = replayDuration
                                 )
                                 if (recorded != null) {
                                     val count = AutoClickCoordinator.recording.value.recordedCount
@@ -898,6 +923,18 @@ class FloatingWindowService : LifecycleService() {
                                         "已录制 $count.${recorded.actionType.displayName}",
                                         Toast.LENGTH_SHORT
                                     ).show()
+                                    if (AutoClickCoordinator.profile.value.recordingMode == AutoClickRecordingMode.RecordAndPassThrough) {
+                                        val replayed = AutoClickAccessibilityService.replayRecordedAction(recorded)
+                                        if (replayed) {
+                                            armRecordReplayPassThroughWindow(recorded.touchDurationMs)
+                                        } else {
+                                            Toast.makeText(
+                                                this@FloatingWindowService,
+                                                "动作已录制，自动模拟失败（请检查无障碍）",
+                                                Toast.LENGTH_SHORT
+                                            ).show()
+                                        }
+                                    }
                                 }
                             }
                         }
@@ -918,11 +955,12 @@ class FloatingWindowService : LifecycleService() {
         recordCaptureLayoutParams = params
     }
 
-    private fun isSwipeGesture(start: Offset, end: Offset, moved: Boolean): Boolean {
+    private fun isSwipeGesture(start: Offset, end: Offset, moved: Boolean, durationMs: Long): Boolean {
         if (!moved) return false
         val dx = (end.x - start.x).toDouble()
         val dy = (end.y - start.y).toDouble()
-        return hypot(dx, dy) >= 24.0
+        val distance = hypot(dx, dy)
+        return distance >= RECORDED_SWIPE_MIN_DISTANCE_PX || (distance >= RECORDED_SWIPE_QUICK_DISTANCE_PX && durationMs <= RECORDED_SWIPE_QUICK_DURATION_MS)
     }
 
     private fun setRecordCaptureTouchable(touchable: Boolean) {
@@ -938,6 +976,36 @@ class FloatingWindowService : LifecycleService() {
             params.flags and touchableFlag.inv()
         }
         updateManagedOverlayView(view, params)
+    }
+
+    private fun shouldIgnoreRecordedInput(): Boolean {
+        return SystemClock.uptimeMillis() <= ignoreRecordInputUntilMillis
+    }
+
+    private fun isRecordCaptureTemporarilyPassthrough(): Boolean {
+        return SystemClock.uptimeMillis() <= ignoreRecordInputUntilMillis
+    }
+
+    private fun armRecordReplayPassThroughWindow(touchDurationMs: Long) {
+        val now = SystemClock.uptimeMillis()
+        val until = now + touchDurationMs.coerceAtLeast(1L) + RECORD_CAPTURE_IGNORE_EXTRA_MS
+        ignoreRecordInputUntilMillis = max(ignoreRecordInputUntilMillis, until)
+
+        setRecordCaptureTouchable(false)
+        recordCapturePassthroughJob?.cancel()
+        recordCapturePassthroughJob = lifecycleScope.launch {
+            while (isActive) {
+                val remaining = ignoreRecordInputUntilMillis - SystemClock.uptimeMillis()
+                if (remaining <= 0L) {
+                    break
+                }
+                delay(remaining)
+            }
+            val stillRecording = AutoClickCoordinator.recording.value.isRecording
+            if (stillRecording) {
+                setRecordCaptureTouchable(true)
+            }
+        }
     }
 
     private fun createLayoutParams(width: Int, height: Int): WindowManager.LayoutParams {
@@ -1046,6 +1114,8 @@ class FloatingWindowService : LifecycleService() {
         runtimeCollectJob = null
         recordingCollectJob?.cancel()
         recordingCollectJob = null
+        recordCapturePassthroughJob?.cancel()
+        recordCapturePassthroughJob = null
 
         panelView?.let { removeManagedOverlayView(it) }
         panelView = null
@@ -1062,8 +1132,27 @@ class FloatingWindowService : LifecycleService() {
         }
         pointViews.clear()
         viewHosts.clear()
+        ignoreRecordInputUntilMillis = 0L
         AutoClickCoordinator.stopRecording()
         _overlayVisible.value = false
+    }
+
+    private fun shouldPointOverlaysBeTouchableNow(): Boolean {
+        val runtimeState = AutoClickCoordinator.runtime.value.state
+        val recording = AutoClickCoordinator.recording.value.isRecording
+        return !recording && runtimeState != AutoClickRunState.Running && runtimeState != AutoClickRunState.Paused
+    }
+
+    private fun applyPointOverlayTouchableFlag(
+        params: WindowManager.LayoutParams,
+        touchable: Boolean,
+    ) {
+        val touchableFlag = WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE
+        params.flags = if (touchable) {
+            params.flags and touchableFlag.inv()
+        } else {
+            params.flags or touchableFlag
+        }
     }
 
     private fun setPointOverlaysTouchable(touchable: Boolean) {
@@ -1088,6 +1177,12 @@ class FloatingWindowService : LifecycleService() {
     companion object {
         const val ACTION_START = "com.example.littleclicker.action.START_FLOATING_WINDOW"
         const val ACTION_STOP = "com.example.littleclicker.action.STOP_FLOATING_WINDOW"
+        private const val RECORDED_TAP_DURATION_MS = 50L
+        private const val RECORDED_SWIPE_MIN_DURATION_MS = 40L
+        private const val RECORDED_SWIPE_MIN_DISTANCE_PX = 12.0
+        private const val RECORDED_SWIPE_QUICK_DISTANCE_PX = 8.0
+        private const val RECORDED_SWIPE_QUICK_DURATION_MS = 120L
+        private const val RECORD_CAPTURE_IGNORE_EXTRA_MS = 180L
 
         private val _overlayVisible = MutableStateFlow(false)
         val overlayVisible: StateFlow<Boolean> = _overlayVisible.asStateFlow()

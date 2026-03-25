@@ -20,6 +20,7 @@ data class AutoClickProfile(
     val points: List<AutoClickPoint> = emptyList(),
     val cycleCount: Int = 1,
     val runMode: AutoClickRunMode = AutoClickRunMode.RunOnce,
+    val recordingMode: AutoClickRecordingMode = AutoClickRecordingMode.RecordAndPassThrough,
     val ntpServerHost: String = DEFAULT_NTP_SERVER_HOST,
     val scheduleRuleHms: String? = null,
     val startAtMillis: Long? = null,
@@ -50,6 +51,17 @@ enum class AutoClickRunMode {
     RunOnce,
     LoopUntilStopped,
 }
+
+enum class AutoClickRecordingMode {
+    RecordOnly,
+    RecordAndPassThrough,
+}
+
+val AutoClickRecordingMode.displayName: String
+    get() = when (this) {
+        AutoClickRecordingMode.RecordOnly -> "仅录制"
+        AutoClickRecordingMode.RecordAndPassThrough -> "录制时穿透到应用"
+    }
 
 data class AutoClickRuntime(
     val state: AutoClickRunState = AutoClickRunState.Idle,

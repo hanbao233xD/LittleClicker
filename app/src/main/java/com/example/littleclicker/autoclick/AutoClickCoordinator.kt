@@ -244,6 +244,7 @@ object AutoClickCoordinator {
         startY: Int,
         endX: Int? = null,
         endY: Int? = null,
+        touchDurationMs: Long? = null,
     ): AutoClickPoint? {
         val recordState = _recording.value
         if (!recordState.isRecording) return null
@@ -275,7 +276,7 @@ object AutoClickCoordinator {
                     null
                 },
                 delayMs = delay,
-                touchDurationMs = 50L,
+                touchDurationMs = (touchDurationMs ?: 50L).coerceAtLeast(1L),
                 repeatCount = 1
             )
             created = point
@@ -435,6 +436,12 @@ object AutoClickCoordinator {
     fun updateRunMode(runMode: AutoClickRunMode) {
         updateProfile { current ->
             current.copy(runMode = runMode)
+        }
+    }
+
+    fun updateRecordingMode(recordingMode: AutoClickRecordingMode) {
+        updateProfile { current ->
+            current.copy(recordingMode = recordingMode)
         }
     }
 
