@@ -620,3 +620,33 @@
   - `adb install -r app/build/outputs/apk/debug/app-debug.apk` 安装成功。
   - `adb logcat -c` 清空日志后执行 `adb shell monkey -p com.example.littleclicker -c android.intent.category.LAUNCHER 1` 成功拉起应用。
   - `adb logcat -d | Select-String "FATAL EXCEPTION|AndroidRuntime|Process: com.example.littleclicker"` 未发现 LittleClicker 进程崩溃（仅有 monkey 命令自身 `AndroidRuntime` 启停日志）。
+
+## 2026-03-25（长按编辑动作时悬浮层降底防遮挡）
+- 需求实现：
+  - 长按编辑动作时，将动作悬浮层临时降到底层，避免遮挡编辑输入框。
+- 代码改动：
+  - `FloatingWindowService` 新增编辑弹窗态控制：
+    - 打开编辑框前将主面板与点位覆盖层统一设为不可触摸；
+    - 同时将主面板与点位覆盖层透明度降为 `0.18`，避免视觉遮挡；
+    - 关闭编辑框后自动恢复触摸与透明度。
+  - `showPointEditDialog` 增加 `setOnDismissListener`，无论“取消/保存/异常关闭”都执行恢复逻辑，避免状态残留。
+  - `setPointOverlaysTouchable` 增加编辑态保护：编辑期间强制不可触摸，防止被运行态/录制态状态刷新反向改回可触摸。
+- 验证结果：
+  - `./gradlew :app:assembleDebug --no-daemon` 通过。
+  - `./gradlew :app:testDebugUnitTest --no-daemon` 通过。
+  - `adb install -r app/build/outputs/apk/debug/app-debug.apk` 安装成功。
+  - `adb logcat -c` 清空日志后执行 `adb shell monkey -p com.example.littleclicker -c android.intent.category.LAUNCHER 1` 成功拉起应用。
+  - `adb logcat -d | Select-String "FATAL EXCEPTION|AndroidRuntime|Process: com.example.littleclicker"` 未发现 LittleClicker 进程崩溃（仅有 monkey 命令自身 `AndroidRuntime` 启停日志）。
+
+## 2026-03-25（编辑动作时悬浮层完全隐藏）
+- 需求实现：
+  - 用户进入动作编辑框时，悬浮窗与点位层不应可见。
+- 代码改动：
+  - `FloatingWindowService` 将编辑态透明度常量从 `0.18` 调整为 `0`，实现编辑期间“完全不可见”。
+  - 保留原有“不可触摸 + 关闭编辑框后自动恢复”的逻辑不变。
+- 验证结果：
+  - `./gradlew :app:assembleDebug --no-daemon` 通过。
+  - `./gradlew :app:testDebugUnitTest --no-daemon` 通过。
+  - `adb install -r app/build/outputs/apk/debug/app-debug.apk` 安装成功。
+  - `adb logcat -c` 清空日志后执行 `adb shell monkey -p com.example.littleclicker -c android.intent.category.LAUNCHER 1` 成功拉起应用。
+  - `adb logcat -d | Select-String "FATAL EXCEPTION|AndroidRuntime|Process: com.example.littleclicker"` 未发现 LittleClicker 进程崩溃（仅有 monkey 命令自身 `AndroidRuntime` 启停日志）。

@@ -127,6 +127,7 @@ class FloatingWindowService : LifecycleService() {
     private var recordingCollectJob: Job? = null
     private var recordCapturePassthroughJob: Job? = null
     private var pointEditDialog: AlertDialog? = null
+    private var pointEditOverlayLowered: Boolean = false
     @Volatile
     private var ignoreRecordInputUntilMillis: Long = 0L
 
@@ -145,17 +146,18 @@ class FloatingWindowService : LifecycleService() {
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+        super.onStartCommand(intent, flags, startId)
         when (intent?.action) {
             ACTION_STOP -> {
                 AutoClickCoordinator.discardUnsavedChanges()
                 stopSelf()
-                return Service.START_NOT_STICKY
+                return START_NOT_STICKY
             }
 
             ACTION_START, null -> showOverlayIfNeeded()
             else -> showOverlayIfNeeded()
         }
-        return Service.START_STICKY
+        return START_STICKY
     }
 
     override fun onDestroy() {
@@ -790,6 +792,7 @@ class FloatingWindowService : LifecycleService() {
             }
             .create()
 
+        lowerOverlaysForPointEditDialog()
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             dialog.window?.setType(WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY)
         } else {
@@ -797,8 +800,20 @@ class FloatingWindowService : LifecycleService() {
             dialog.window?.setType(WindowManager.LayoutParams.TYPE_PHONE)
         }
 
+        dialog.setOnDismissListener {
+            if (pointEditDialog === dialog) {
+                pointEditDialog = null
+            }
+            restoreOverlaysAfterPointEditDialog()
+        }
+
         pointEditDialog = dialog
-        dialog.show()
+        runCatching { dialog.show() }
+            .onFailure {
+                pointEditDialog = null
+                restoreOverlaysAfterPointEditDialog()
+                Toast.makeText(this, "打开编辑框失败，请重试", Toast.LENGTH_SHORT).show()
+            }
     }
 
     private fun xInputToLong(input: EditText, fallback: Long, min: Long): Long {
@@ -1146,6 +1161,7 @@ class FloatingWindowService : LifecycleService() {
         pointViews.clear()
         viewHosts.clear()
         ignoreRecordInputUntilMillis = 0L
+        pointEditOverlayLowered = false
         AutoClickCoordinator.stopRecording()
         _overlayVisible.value = false
     }
@@ -1174,7 +1190,7 @@ class FloatingWindowService : LifecycleService() {
             group.overlays().forEach { overlay ->
                 val params = overlay.layoutParams
                 val hasFlag = (params.flags and touchableFlag) != 0
-                val needFlag = !touchable || overlay.alwaysNotTouchable
+                val needFlag = pointEditOverlayLowered || !touchable || overlay.alwaysNotTouchable
                 if (hasFlag == needFlag) return@forEach
 
                 params.flags = if (needFlag) {
@@ -1182,6 +1198,66 @@ class FloatingWindowService : LifecycleService() {
                 } else {
                     params.flags and touchableFlag.inv()
                 }
+                updateManagedOverlayView(overlay.view, params)
+            }
+        }
+    }
+
+    private fun lowerOverlaysForPointEditDialog() {
+        if (pointEditOverlayLowered) return
+        pointEditOverlayLowered = true
+        setPanelOverlayTouchable(false)
+        setPointOverlaysTouchable(false)
+        setPanelOverlayAlpha(EDIT_DIALOG_OVERLAY_ALPHA)
+        setPointOverlaysAlpha(EDIT_DIALOG_OVERLAY_ALPHA)
+    }
+
+    private fun restoreOverlaysAfterPointEditDialog() {
+        if (!pointEditOverlayLowered) return
+        pointEditOverlayLowered = false
+        setPanelOverlayAlpha(1f)
+        setPointOverlaysAlpha(1f)
+        setPanelOverlayTouchable(shouldPanelOverlayBeTouchableNow())
+        setPointOverlaysTouchable(shouldPointOverlaysBeTouchableNow())
+    }
+
+    private fun shouldPanelOverlayBeTouchableNow(): Boolean {
+        val runtimeState = AutoClickCoordinator.runtime.value.state
+        val recording = AutoClickCoordinator.recording.value.isRecording
+        return !recording && runtimeState != AutoClickRunState.Running && runtimeState != AutoClickRunState.Paused
+    }
+
+    private fun setPanelOverlayTouchable(touchable: Boolean) {
+        val view = panelView ?: return
+        val params = panelLayoutParams ?: return
+        val touchableFlag = WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE
+        val hasFlag = (params.flags and touchableFlag) != 0
+        val needFlag = !touchable
+        if (hasFlag == needFlag) return
+        params.flags = if (needFlag) {
+            params.flags or touchableFlag
+        } else {
+            params.flags and touchableFlag.inv()
+        }
+        updateManagedOverlayView(view, params)
+    }
+
+    private fun setPanelOverlayAlpha(alpha: Float) {
+        val view = panelView ?: return
+        val params = panelLayoutParams ?: return
+        val safeAlpha = alpha.coerceIn(0f, 1f)
+        if (params.alpha == safeAlpha) return
+        params.alpha = safeAlpha
+        updateManagedOverlayView(view, params)
+    }
+
+    private fun setPointOverlaysAlpha(alpha: Float) {
+        val safeAlpha = alpha.coerceIn(0f, 1f)
+        pointViews.values.forEach { group ->
+            group.overlays().forEach { overlay ->
+                val params = overlay.layoutParams
+                if (params.alpha == safeAlpha) return@forEach
+                params.alpha = safeAlpha
                 updateManagedOverlayView(overlay.view, params)
             }
         }
@@ -1198,6 +1274,7 @@ class FloatingWindowService : LifecycleService() {
         private const val RECORDED_SWIPE_QUICK_DISTANCE_PX = 8.0
         private const val RECORDED_SWIPE_QUICK_DURATION_MS = 120L
         private const val RECORD_CAPTURE_IGNORE_EXTRA_MS = 180L
+        private const val EDIT_DIALOG_OVERLAY_ALPHA = 0f
 
         private val _overlayVisible = MutableStateFlow(false)
         val overlayVisible: StateFlow<Boolean> = _overlayVisible.asStateFlow()
