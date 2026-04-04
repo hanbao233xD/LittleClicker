@@ -1,6 +1,18 @@
 # LittleClicker 实现记录
 
-最后更新：2026-03-25
+最后更新：2026-04-05
+
+## 2026-04-05（运行中底部红字提示 + 音量下停止引导）
+- 需求实现：
+  - 自动点击运行期间，在屏幕底部持续显示透明红色提示文案：`提示：按音量下键可强制停止自动点击`。
+  - 提示层不依赖动作悬浮窗开关；即使悬浮窗关闭，只要自动点击在执行中仍会显示。
+- 代码改动（`AutoClickAccessibilityService`）：
+  - 新增 `TYPE_ACCESSIBILITY_OVERLAY` 文本提示层，位置固定在屏幕底部居中。
+  - 提示层窗口参数增加 `FLAG_NOT_TOUCHABLE` / `FLAG_NOT_FOCUSABLE`，确保不拦截触摸、不影响正常点击。
+  - 在自动点击任务 `start/stop/异常/销毁` 生命周期中统一管理提示层显示与移除。
+  - 增加执行 `token` 校验，避免“旧任务 finally”误删新任务提示层的并发问题。
+- 资源改动：
+  - `app/src/main/res/values/strings.xml` 新增 `autoclick_force_stop_hint` 文案资源。
 
 ## 2026-03-22
 - 初始化 Compose + Navigation 架构。

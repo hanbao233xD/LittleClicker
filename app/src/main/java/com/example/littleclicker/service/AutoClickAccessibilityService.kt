@@ -3,12 +3,17 @@ package com.example.littleclicker.service
 import android.accessibilityservice.AccessibilityService
 import android.accessibilityservice.AccessibilityServiceInfo
 import android.accessibilityservice.GestureDescription
+import android.graphics.Color
 import android.graphics.Path
+import android.graphics.PixelFormat
+import android.view.Gravity
 import android.view.KeyEvent
 import android.view.View
 import android.view.WindowManager
 import android.view.accessibility.AccessibilityEvent
+import android.widget.TextView
 import android.widget.Toast
+import com.example.littleclicker.R
 import com.example.littleclicker.autoclick.AutoClickActionType
 import com.example.littleclicker.autoclick.AutoClickCoordinator
 import com.example.littleclicker.autoclick.AutoClickPoint
@@ -37,10 +42,13 @@ class AutoClickAccessibilityService : AccessibilityService() {
     }
 
     private var runnerJob: Job? = null
+    private var runtimeHintView: TextView? = null
     @Volatile
     private var paused = false
     @Volatile
     private var stopRequested = false
+    @Volatile
+    private var executionToken: Long = 0L
 
     override fun onServiceConnected() {
         super.onServiceConnected()
@@ -77,6 +85,7 @@ class AutoClickAccessibilityService : AccessibilityService() {
 
     override fun onDestroy() {
         stopExecution()
+        hideRuntimeHintOverlay(force = true)
         if (instance === this) {
             instance = null
         }
@@ -85,14 +94,18 @@ class AutoClickAccessibilityService : AccessibilityService() {
     }
 
     private fun startExecution(profile: AutoClickProfile): Boolean {
+        val currentToken: Long
         synchronized(lock) {
             if (runnerJob?.isActive == true) {
                 return false
             }
             paused = false
             stopRequested = false
+            executionToken += 1L
+            currentToken = executionToken
             runnerJob = serviceScope.launch {
                 try {
+                    showRuntimeHintOverlay(currentToken)
                     AutoClickCoordinator.reportExecutionState(
                         state = AutoClickRunState.Running,
                         message = "自动点击执行中"
@@ -114,6 +127,7 @@ class AutoClickAccessibilityService : AccessibilityService() {
                         message = error.message ?: "执行失败"
                     )
                 } finally {
+                    hideRuntimeHintOverlay(token = currentToken)
                     synchronized(lock) {
                         runnerJob = null
                         paused = false
@@ -152,6 +166,7 @@ class AutoClickAccessibilityService : AccessibilityService() {
     }
 
     private fun stopExecution(): Boolean {
+        val currentToken: Long
         val job = synchronized(lock) {
             val activeJob = runnerJob
             if (activeJob == null) {
@@ -160,8 +175,10 @@ class AutoClickAccessibilityService : AccessibilityService() {
             runnerJob = null
             paused = false
             stopRequested = true
+            currentToken = executionToken
             activeJob
         }
+        hideRuntimeHintOverlay(token = currentToken)
         job.cancel()
         AutoClickCoordinator.reportExecutionState(
             state = AutoClickRunState.Idle,
@@ -394,6 +411,56 @@ class AutoClickAccessibilityService : AccessibilityService() {
             overlayWindowManager.removeView(view)
             true
         }.getOrElse { false }
+    }
+
+    private fun showRuntimeHintOverlay(token: Long) {
+        if (!isTokenCurrent(token)) return
+        if (runtimeHintView != null) return
+
+        val density = resources.displayMetrics.density
+        val hintView = TextView(this).apply {
+            text = getString(R.string.autoclick_force_stop_hint)
+            textSize = 12f
+            setTextColor(Color.argb(170, 255, 0, 0))
+            setBackgroundColor(Color.TRANSPARENT)
+            gravity = Gravity.CENTER
+            setPadding(
+                (8 * density).toInt(),
+                (2 * density).toInt(),
+                (8 * density).toInt(),
+                (2 * density).toInt()
+            )
+        }
+        val params = WindowManager.LayoutParams(
+            WindowManager.LayoutParams.WRAP_CONTENT,
+            WindowManager.LayoutParams.WRAP_CONTENT,
+            WindowManager.LayoutParams.TYPE_ACCESSIBILITY_OVERLAY,
+            WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
+                WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE or
+                WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL or
+                WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN,
+            PixelFormat.TRANSLUCENT
+        ).apply {
+            gravity = Gravity.CENTER_HORIZONTAL or Gravity.BOTTOM
+            y = (20 * density).toInt()
+        }
+
+        if (!isTokenCurrent(token)) return
+        val added = addOverlayViewInternal(hintView, params)
+        if (added) {
+            runtimeHintView = hintView
+        }
+    }
+
+    private fun hideRuntimeHintOverlay(token: Long? = null, force: Boolean = false) {
+        if (!force && token != null && !isTokenCurrent(token)) return
+        val view = runtimeHintView ?: return
+        removeOverlayViewInternal(view)
+        runtimeHintView = null
+    }
+
+    private fun isTokenCurrent(token: Long): Boolean {
+        return synchronized(lock) { executionToken == token }
     }
 
     companion object {

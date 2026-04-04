@@ -1,3 +1,4 @@
 <resources>
     <string name="app_name">定时点击器Ultra</string>
+    <string name="autoclick_force_stop_hint">提示：按音量下键可强制停止自动点击</string>
 </resources>
