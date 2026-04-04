@@ -2,6 +2,17 @@
 
 最后更新：2026-04-05
 
+## 2026-04-05（编辑点击点弹窗支持滚动）
+- 问题现象：
+  - 编辑点击点时，弹窗内容在小屏设备上超出可视区域，底部配置项无法触达。
+- 修复方案：
+  - `AutoClickScreen.showPointEditDialog`：将编辑表单由直接 `setView(LinearLayout)` 改为 `setView(ScrollView)`，表单内容作为 `ScrollView` 子视图。
+  - `FloatingWindowService.showPointEditDialog`：同步采用 `ScrollView` 包裹编辑表单，保持主界面与悬浮窗编辑体验一致。
+- 影响范围：
+  - 支持在编辑弹窗内上下滚动，底部字段（如触摸时长、重复次数）可正常编辑。
+- 验证结果：
+  - `./gradlew :app:compileDebugKotlin` 通过。
+
 ## 2026-04-05（运行中底部红字提示 + 音量下停止引导）
 - 需求实现：
   - 自动点击运行期间，在屏幕底部持续显示透明红色提示文案：`提示：按音量下键可强制停止自动点击`。

@@ -9,6 +9,7 @@ import android.text.InputType
 import android.widget.EditText
 import android.widget.LinearLayout
 import android.widget.NumberPicker
+import android.widget.ScrollView
 import android.widget.Toast
 import androidx.compose.foundation.background
 import androidx.compose.foundation.isSystemInDarkTheme
@@ -752,10 +753,14 @@ private fun showPointEditDialog(
         addView(buildField(context, "触摸时长(ms)", touchInput))
         addView(buildField(context, "重复次数", repeatInput))
     }
+    val scrollContainer = ScrollView(context).apply {
+        isFillViewport = true
+        addView(container)
+    }
 
     AlertDialog.Builder(context)
         .setTitle("编辑点击点 #${point.id}")
-        .setView(container)
+        .setView(scrollContainer)
         .setNegativeButton("取消", null)
         .setPositiveButton("保存") { _, _ ->
             val currentPoint = AutoClickCoordinator.profile.value.points.firstOrNull { it.id == point.id } ?: point

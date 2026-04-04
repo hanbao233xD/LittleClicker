@@ -1,12 +1,18 @@
 # LittleClicker 代码经验沉淀
 
-最后更新：2026-03-23
+最后更新：2026-04-05
 
 ## 使用规则
 1. 本文件专门记录“编码过程中的经验、踩坑与最佳实践”。
 2. 每次完成重要开发后都追加一条，避免重复踩坑。
 
 ## 经验记录
+### 2026-04-05
+6. AlertDialog 自定义表单的可达性经验：
+- 现象：表单项较多时，直接 `setView(LinearLayout)` 在部分机型/字号下会出现底部字段不可见、不可编辑。
+- 处理：统一改为 `ScrollView` 包裹表单容器（`LinearLayout`），并设置 `isFillViewport = true`，确保弹窗内容可滚动触达。
+- 建议：后续新增“多字段编辑弹窗”时，默认采用“`ScrollView + 表单容器`”结构，避免重复出现可达性问题。
+
 ### 2026-03-22
 1. Compose 图标类运行时崩溃排查：
 - 现象：`NoClassDefFoundError: androidx.compose.material.icons.Icons`。

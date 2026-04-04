@@ -13,6 +13,7 @@ import android.view.Gravity
 import android.view.WindowManager
 import android.widget.EditText
 import android.widget.LinearLayout
+import android.widget.ScrollView
 import android.widget.Toast
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
@@ -748,10 +749,14 @@ class FloatingWindowService : LifecycleService() {
             addView(buildField("触摸时长(ms)", touchInput))
             addView(buildField("重复次数", repeatInput))
         }
+        val scrollContainer = ScrollView(this).apply {
+            isFillViewport = true
+            addView(container)
+        }
 
         val dialog = AlertDialog.Builder(this)
             .setTitle("编辑点击点 #${point.id}")
-            .setView(container)
+            .setView(scrollContainer)
             .setNegativeButton("取消", null)
             .setPositiveButton("保存") { _, _ ->
                 val currentPoint = AutoClickCoordinator.profile.value.points
