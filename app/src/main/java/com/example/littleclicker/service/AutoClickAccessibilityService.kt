@@ -210,6 +210,12 @@ class AutoClickAccessibilityService : AccessibilityService() {
                     repeat(safeCycles) {
                         executePointSequence(profile.points)
                     }
+                    ensureNotCancelled()
+                    waitIfPaused()
+                    val loopDelayMs = profile.loopIntervalDelayMs.coerceAtLeast(0L)
+                    if (loopDelayMs > 0L) {
+                        delay(loopDelayMs)
+                    }
                 }
             }
         }

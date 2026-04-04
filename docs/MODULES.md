@@ -44,6 +44,8 @@
   - 配置项：
     - `profile.name`
     - `cycleCount`
+    - `runMode`（`运行一次` / `循环运行直至手动停止`）
+    - `loopIntervalDelayMs`（循环模式下每轮结束后的等待时长，默认 `200ms`）
     - `recordingMode`（`仅录制` / `录制时穿透到应用`）
     - 每个点击点的 `delayMs`、`touchDurationMs`、`repeatCount`
   - 定时项：

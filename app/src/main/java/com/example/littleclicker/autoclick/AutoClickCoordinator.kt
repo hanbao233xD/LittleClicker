@@ -448,6 +448,12 @@ object AutoClickCoordinator {
         }
     }
 
+    fun updateLoopIntervalDelay(loopIntervalDelayMs: Long) {
+        updateProfile { current ->
+            current.copy(loopIntervalDelayMs = loopIntervalDelayMs.coerceAtLeast(0L))
+        }
+    }
+
     fun updateRecordingMode(recordingMode: AutoClickRecordingMode) {
         updateProfile { current ->
             current.copy(recordingMode = recordingMode)
@@ -813,6 +819,7 @@ object AutoClickCoordinator {
             val updated = transform(current)
             updated.copy(
                 cycleCount = updated.cycleCount.coerceAtLeast(1),
+                loopIntervalDelayMs = updated.loopIntervalDelayMs.coerceAtLeast(0L),
                 ntpServerHost = updated.ntpServerHost.ifBlank { DEFAULT_NTP_SERVER_HOST },
                 scheduleRuleHms = normalizeScheduleRuleHms(updated.scheduleRuleHms),
                 points = updated.points.map { point ->

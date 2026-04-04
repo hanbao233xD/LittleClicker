@@ -28,12 +28,14 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -44,6 +46,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -74,6 +77,7 @@ import top.yukonga.miuix.kmp.basic.Button
 import top.yukonga.miuix.kmp.basic.Card
 import top.yukonga.miuix.kmp.basic.CardDefaults
 import top.yukonga.miuix.kmp.basic.Text
+import top.yukonga.miuix.kmp.basic.TextField as MiuixTextField
 import top.yukonga.miuix.kmp.extra.SuperSwitch
 import top.yukonga.miuix.kmp.extra.WindowDropdown
 import top.yukonga.miuix.kmp.theme.MiuixTheme
@@ -170,6 +174,9 @@ internal fun AutoClickScreen(
     val selectedRecordModeIndex = when (profile.recordingMode) {
         AutoClickRecordingMode.RecordOnly -> 0
         AutoClickRecordingMode.RecordAndPassThrough -> 1
+    }
+    var loopIntervalDelayInput by remember(profile.loopIntervalDelayMs, profile.runMode) {
+        mutableStateOf(profile.loopIntervalDelayMs.toString())
     }
 
     LazyColumn(
@@ -299,6 +306,27 @@ internal fun AutoClickScreen(
                                 AutoClickCoordinator.updateRunMode(mode)
                             }
                         )
+                        if (profile.runMode == AutoClickRunMode.LoopUntilStopped) {
+                            MiuixTextField(
+                                value = loopIntervalDelayInput,
+                                onValueChange = { rawValue ->
+                                    val filtered = rawValue.filter { it.isDigit() }
+                                    loopIntervalDelayInput = filtered
+                                    val parsed = filtered.toLongOrNull() ?: return@MiuixTextField
+                                    if (parsed == profile.loopIntervalDelayMs) return@MiuixTextField
+                                    AutoClickCoordinator.updateLoopIntervalDelay(parsed)
+                                    AutoClickCoordinator.saveProfile()
+                                },
+                                modifier = Modifier.fillMaxWidth(),
+                                label = "每次循环延迟(ms)",
+                                singleLine = true,
+                                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number)
+                            )
+                            Text(
+                                text = "决定每次循环间隔多久",
+                                color = MiuixTheme.colorScheme.onBackgroundVariant
+                            )
+                        }
                         WindowDropdown(
                             items = recordModeItems,
                             selectedIndex = selectedRecordModeIndex,

@@ -755,3 +755,19 @@
   - 新增常量 `FIRST_RECORDED_ACTION_DELAY_MS = 100L`，统一管理该默认值。
 - 验证结果：
   - `./gradlew :app:compileDebugKotlin --no-daemon` 通过。
+
+## 2026-04-05（循环运行模式新增每轮延迟输入与自动保存）
+- 需求实现：
+  - 在“动作悬浮窗与运行方式”中，当运行方式为“循环运行直至手动停止”时，提供可编辑输入框控制每次循环延迟。
+- 修复内容：
+  - 数据模型：
+    - `AutoClickProfile` 新增 `loopIntervalDelayMs` 字段，默认值 `200ms`。
+    - `AutoClickRepository` 增加 `loopIntervalDelayMs` 的 JSON 读写兼容；旧配置缺省时自动回填 `200ms`。
+  - 业务逻辑：
+    - `AutoClickCoordinator` 新增 `updateLoopIntervalDelay(...)`，并在配置归一化中保证值不为负数。
+    - `AutoClickAccessibilityService` 在 `LoopUntilStopped` 模式下，每轮执行完成后按 `loopIntervalDelayMs` 等待，再进入下一轮。
+  - UI（miuix）：
+    - `AutoClickScreen` 在循环运行模式下展示 `TextField`（标题“每次循环延迟(ms)”）。
+    - 输入仅允许数字，默认显示 `200`，修改后立即写入配置并调用 `saveProfile()` 自动保存。
+- 验证结果：
+  - `./gradlew :app:compileDebugKotlin --no-daemon` 通过。

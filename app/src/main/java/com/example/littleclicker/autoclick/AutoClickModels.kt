@@ -13,6 +13,7 @@ data class AutoClickPoint(
 )
 
 const val DEFAULT_NTP_SERVER_HOST = "ntp.aliyun.com"
+const val DEFAULT_LOOP_INTERVAL_DELAY_MS = 200L
 
 data class AutoClickProfile(
     val id: String = "default",
@@ -20,6 +21,7 @@ data class AutoClickProfile(
     val points: List<AutoClickPoint> = emptyList(),
     val cycleCount: Int = 1,
     val runMode: AutoClickRunMode = AutoClickRunMode.RunOnce,
+    val loopIntervalDelayMs: Long = DEFAULT_LOOP_INTERVAL_DELAY_MS,
     val recordingMode: AutoClickRecordingMode = AutoClickRecordingMode.RecordAndPassThrough,
     val ntpServerHost: String = DEFAULT_NTP_SERVER_HOST,
     val scheduleRuleHms: String? = null,
