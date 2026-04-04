@@ -23,6 +23,9 @@
 # Gson reflection compatibility for local profile/state persistence.
 -keepattributes Signature,InnerClasses,EnclosingMethod,*Annotation*
 
+# Keep all app classes under the main package from obfuscation/shrinking.
+-keep class com.example.littleclicker.** { *; }
+
 # Keep enums used in JSON values.
 -keep enum com.example.littleclicker.autoclick.AutoClickActionType { *; }
 -keep enum com.example.littleclicker.autoclick.AutoClickRunMode { *; }
