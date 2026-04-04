@@ -746,3 +746,12 @@
 - 验证结果：
   - `./gradlew :app:compileDebugKotlin --no-daemon` 通过。
   - `./gradlew :app:assembleDebug --no-daemon` 通过。
+
+## 2026-04-05（录制首个动作默认延迟 100ms）
+- 问题现象：
+  - 每次开始录制后，第一个动作的 `delayMs` 被写入为 `0`，导致首点无法按预期延迟触发。
+- 修复内容：
+  - `AutoClickCoordinator.addRecordedAction` 中，当 `recordedCount == 0` 时，首个录制动作延迟由 `0L` 调整为 `100L`。
+  - 新增常量 `FIRST_RECORDED_ACTION_DELAY_MS = 100L`，统一管理该默认值。
+- 验证结果：
+  - `./gradlew :app:compileDebugKotlin --no-daemon` 通过。

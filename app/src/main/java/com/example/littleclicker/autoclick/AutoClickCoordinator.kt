@@ -21,6 +21,7 @@ object AutoClickCoordinator {
     private const val AUTO_NAME_PREFIX = "点击配置_"
     private const val SCHEDULE_POLL_INTERVAL_MS = 30L
     private const val AUTO_SAVE_INTERVAL_MS = 1_000L
+    private const val FIRST_RECORDED_ACTION_DELAY_MS = 100L
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
     private val saveLock = Any()
@@ -252,7 +253,7 @@ object AutoClickCoordinator {
         val now = System.currentTimeMillis()
         val actionStartedAt = actionStartAtMillis ?: now
         val delay = if (recordState.recordedCount == 0) {
-            0L
+            FIRST_RECORDED_ACTION_DELAY_MS
         } else {
             (actionStartedAt - (recordState.lastTapAtMillis ?: actionStartedAt)).coerceAtLeast(0L)
         }
