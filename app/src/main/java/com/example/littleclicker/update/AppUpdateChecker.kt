@@ -49,7 +49,10 @@ internal object AppUpdateChecker {
 
         val versionCode = parts[0].trim().toIntOrNull() ?: return null
         val downloadUrl = parts[1].trim()
-        val changelog = parts[2].trim().ifBlank { "暂无更新日志" }
+        val changelog = parts[2]
+            .trim()
+            .decodeEscapedLineBreaks()
+            .ifBlank { "暂无更新日志" }
         if (downloadUrl.isBlank()) return null
 
         return AppUpdateInfo(

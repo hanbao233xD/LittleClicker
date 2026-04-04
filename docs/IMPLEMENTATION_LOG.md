@@ -783,3 +783,14 @@
     - `scheduleAtHms(...)` 调整为每次设置时间都执行 `syncNtpTime(force = true)`，确保自动触发校时。
 - 验证结果：
   - `./gradlew :app:assembleDebug :app:testDebugUnitTest` 通过。
+
+## 2026-04-05（公告/检查更新支持 `\n` 换行）
+- 需求实现：
+  - 公告内容与更新日志内容支持使用字面量 `\n` 表示换行，并在卡片中按多行显示。
+- 修复内容：
+  - `AppNoticeChecker` 在解析 `notice.txt` 内容时，新增对 `\\r\\n`、`\\n`、`\\r` 的解码，统一转换为真实换行符。
+  - `AppUpdateChecker` 在解析 `version.txt` 的 `changelog` 时，复用同一解码逻辑，确保“检查更新”卡片内容支持换行。
+  - 新增单测 `EscapedLineBreaksTest`，覆盖 `\n` 与 `\r\n` 两种转义换行场景，防止回归。
+- 验证结果：
+  - `./gradlew :app:testDebugUnitTest --no-daemon` 通过。
+  - `./gradlew :app:assembleDebug --no-daemon` 通过。

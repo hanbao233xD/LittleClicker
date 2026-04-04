@@ -44,7 +44,10 @@ internal object AppNoticeChecker {
         if (parts.size < 2) return null
 
         val link = parts[0].trim()
-        val content = parts[1].trim().ifBlank { "点击查看最新公告" }
+        val content = parts[1]
+            .trim()
+            .decodeEscapedLineBreaks()
+            .ifBlank { "点击查看最新公告" }
         if (link.isBlank()) return null
 
         return AppNoticeInfo(
@@ -52,4 +55,11 @@ internal object AppNoticeChecker {
             content = content,
         )
     }
+}
+
+internal fun String.decodeEscapedLineBreaks(): String {
+    return this
+        .replace("\\r\\n", "\n")
+        .replace("\\n", "\n")
+        .replace("\\r", "\n")
 }
