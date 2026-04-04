@@ -771,3 +771,15 @@
     - 输入仅允许数字，默认显示 `200`，修改后立即写入配置并调用 `saveProfile()` 自动保存。
 - 验证结果：
   - `./gradlew :app:compileDebugKotlin --no-daemon` 通过。
+
+## 2026-04-05（定时设置后自动开启定时悬浮窗 + 自动同步 NTP）
+- 需求实现：
+  - 在“定时点击”模块中，用户设置 `hh:mm:ss` 成功后自动开启定时悬浮窗，并自动发起 NTP 校时。
+- 修复内容：
+  - `AutoClickScreen`：
+    - 在“选择时间”回调中，`scheduleAtHms(...)` 成功后自动尝试开启 `TimerFloatingWindowService`；
+    - 若权限未满足，沿用统一权限闸门引导并提示。
+  - `AutoClickCoordinator`：
+    - `scheduleAtHms(...)` 调整为每次设置时间都执行 `syncNtpTime(force = true)`，确保自动触发校时。
+- 验证结果：
+  - `./gradlew :app:assembleDebug :app:testDebugUnitTest` 通过。

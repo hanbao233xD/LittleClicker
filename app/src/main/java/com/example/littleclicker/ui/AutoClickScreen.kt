@@ -364,7 +364,17 @@ internal fun AutoClickScreen(
                         onSelected = { hour, minute, second ->
                             val success = AutoClickCoordinator.scheduleAtHms(hour, minute, second)
                             val tip = if (success) {
-                                "定时已设置：${String.format("%02d:%02d:%02d", hour, minute, second)}"
+                                val baseTip = "定时已设置：${String.format("%02d:%02d:%02d", hour, minute, second)}"
+                                if (!timerOverlayEnabled) {
+                                    if (ensureOverlayStartPermissions(context)) {
+                                        TimerFloatingWindowService.start(context)
+                                        "$baseTip，已自动开启定时悬浮窗"
+                                    } else {
+                                        "$baseTip，请先完成权限后再开启定时悬浮窗"
+                                    }
+                                } else {
+                                    "$baseTip，定时悬浮窗已开启"
+                                }
                             } else {
                                 "设定时间已过期，请重新设置"
                             }

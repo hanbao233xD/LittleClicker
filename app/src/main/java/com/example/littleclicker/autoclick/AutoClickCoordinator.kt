@@ -532,9 +532,7 @@ object AutoClickCoordinator {
     }
 
     fun scheduleAtHms(hour: Int, minute: Int, second: Int): Boolean {
-        if (appContext != null) {
-            syncNtpTime(force = false)
-        }
+        syncNtpTime(force = true)
 
         val safeHour = hour.coerceIn(0, 23)
         val safeMinute = minute.coerceIn(0, 59)
