@@ -284,15 +284,7 @@ class AutoClickAccessibilityService : AccessibilityService() {
         if (!canReplay) return false
         serviceScope.launch {
             delay(triggerDelayMs.coerceAtLeast(0L))
-            val replayPoint = if (
-                point.actionType == AutoClickActionType.Swipe &&
-                point.touchDurationMs < RECORD_REPLAY_MIN_SWIPE_DURATION_MS
-            ) {
-                point.copy(touchDurationMs = RECORD_REPLAY_MIN_SWIPE_DURATION_MS)
-            } else {
-                point
-            }
-            dispatchPoint(replayPoint)
+            dispatchPoint(point)
         }
         return true
     }
@@ -466,7 +458,6 @@ class AutoClickAccessibilityService : AccessibilityService() {
     companion object {
         private const val START_TRIGGER_DELAY_MS = 100L
         private const val RECORD_REPLAY_TRIGGER_DELAY_MS = 80L
-        private const val RECORD_REPLAY_MIN_SWIPE_DURATION_MS = 40L
 
         @Volatile
         private var instance: AutoClickAccessibilityService? = null

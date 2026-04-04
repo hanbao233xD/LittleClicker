@@ -707,3 +707,30 @@
   - `adb shell run-as com.example.littleclicker cat files/autoclick/profiles/default.json` 连续读取两次（间隔 2 秒），`updatedAt` 从 `1774427173162` 增加到 `1774427175169`，自动保存在持续落盘。
   - `adb logcat -c` 清空日志后执行 `adb shell monkey -p com.example.littleclicker -c android.intent.category.LAUNCHER 1` 成功拉起应用。
   - `adb logcat -d | Select-String "FATAL EXCEPTION|AndroidRuntime|Process: com.example.littleclicker"` 未发现 LittleClicker 进程崩溃（仅有 monkey 命令自身 `AndroidRuntime` 启停日志）。
+
+## 2026-04-05（录制动作回放一致性修复：点击时长与动作间隔）
+- 问题现象：
+  - 录制滑动/点击后，回放行为与实际录制手势不一致，尤其表现为点击触发节奏与录制时不一致。
+- 根因分析：
+  - 录制点击时长被固定为 `50ms`，未使用真实按下到抬起时长；
+  - 录制动作延时按“上一次抬起 -> 本次抬起”计算，误包含了本次按压时长，导致回放节奏偏慢。
+- 修复内容：
+  - `FloatingWindowService`：
+    - 录制点击动作时改为使用真实手势时长（最小 `1ms`）；
+    - 在手势 `down` 时记录 wall-clock 时间，并在写入录制动作时传递给协调器。
+  - `AutoClickCoordinator`：
+    - `addRecordedAction` 新增 `actionStartAtMillis` 参数；
+    - 动作 `delayMs` 改为按“上一次抬起 -> 本次按下”计算，避免将本次按压时长重复计入延时。
+- 验证结果：
+  - `./gradlew :app:compileDebugKotlin --no-daemon` 通过。
+  - `./gradlew :app:assembleDebug --no-daemon` 通过。
+
+## 2026-04-05（录制滑动速度对齐用户手势）
+- 需求实现：
+  - 录制滑动后，回放速度需要与用户实际滑动速度一致。
+- 修复内容：
+  - `FloatingWindowService` 录制滑动动作时长改为直接使用真实手势时长（最小 `1ms`），移除滑动最小时长强制拉长逻辑。
+  - `AutoClickAccessibilityService.replayRecordedAction` 移除录制回放阶段对滑动时长的二次最小值钳制，改为按录制值原样回放。
+- 验证结果：
+  - `./gradlew :app:compileDebugKotlin --no-daemon` 通过。
+  - `./gradlew :app:assembleDebug --no-daemon` 通过。

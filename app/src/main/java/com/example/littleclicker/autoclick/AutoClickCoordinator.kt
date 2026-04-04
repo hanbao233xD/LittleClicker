@@ -245,14 +245,16 @@ object AutoClickCoordinator {
         endX: Int? = null,
         endY: Int? = null,
         touchDurationMs: Long? = null,
+        actionStartAtMillis: Long? = null,
     ): AutoClickPoint? {
         val recordState = _recording.value
         if (!recordState.isRecording) return null
         val now = System.currentTimeMillis()
+        val actionStartedAt = actionStartAtMillis ?: now
         val delay = if (recordState.recordedCount == 0) {
             0L
         } else {
-            (now - (recordState.lastTapAtMillis ?: now)).coerceAtLeast(0L)
+            (actionStartedAt - (recordState.lastTapAtMillis ?: actionStartedAt)).coerceAtLeast(0L)
         }
 
         var created: AutoClickPoint? = null

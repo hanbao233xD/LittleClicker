@@ -899,6 +899,7 @@ class FloatingWindowService : LifecycleService() {
                                 val down = awaitFirstDown(requireUnconsumed = false)
                                 val start = down.position
                                 val downUptime = down.uptimeMillis
+                                val downWallClockMillis = System.currentTimeMillis()
                                 var last = start
                                 var upUptime = downUptime
                                 var moved = false
@@ -930,8 +931,8 @@ class FloatingWindowService : LifecycleService() {
                                     AutoClickActionType.Click
                                 }
                                 val replayDuration = when (actionType) {
-                                    AutoClickActionType.Click -> RECORDED_TAP_DURATION_MS
-                                    AutoClickActionType.Swipe -> rawDuration.coerceAtLeast(RECORDED_SWIPE_MIN_DURATION_MS)
+                                    AutoClickActionType.Click -> rawDuration.coerceAtLeast(1L)
+                                    AutoClickActionType.Swipe -> rawDuration.coerceAtLeast(1L)
                                 }
                                 val recorded = AutoClickCoordinator.addRecordedAction(
                                     actionType = actionType,
@@ -939,7 +940,8 @@ class FloatingWindowService : LifecycleService() {
                                     startY = start.y.roundToInt(),
                                     endX = if (actionType == AutoClickActionType.Swipe) last.x.roundToInt() else null,
                                     endY = if (actionType == AutoClickActionType.Swipe) last.y.roundToInt() else null,
-                                    touchDurationMs = replayDuration
+                                    touchDurationMs = replayDuration,
+                                    actionStartAtMillis = downWallClockMillis
                                 )
                                 if (recorded != null) {
                                     val count = AutoClickCoordinator.recording.value.recordedCount
@@ -1288,8 +1290,6 @@ class FloatingWindowService : LifecycleService() {
     companion object {
         const val ACTION_START = "com.example.littleclicker.action.START_FLOATING_WINDOW"
         const val ACTION_STOP = "com.example.littleclicker.action.STOP_FLOATING_WINDOW"
-        private const val RECORDED_TAP_DURATION_MS = 50L
-        private const val RECORDED_SWIPE_MIN_DURATION_MS = 40L
         private const val RECORDED_CLICK_REPLAY_DELAY_MS = 80L
         private const val RECORDED_SWIPE_REPLAY_DELAY_MS = 200L
         private const val RECORDED_SWIPE_MIN_DISTANCE_PX = 12.0
