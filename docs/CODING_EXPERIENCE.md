@@ -13,6 +13,11 @@
 - 处理：统一改为 `ScrollView` 包裹表单容器（`LinearLayout`），并设置 `isFillViewport = true`，确保弹窗内容可滚动触达。
 - 建议：后续新增“多字段编辑弹窗”时，默认采用“`ScrollView + 表单容器`”结构，避免重复出现可达性问题。
 
+7. 扩展动作枚举时的联动经验：
+- 现象：自动点击动作从 `Click/Swipe` 扩展到更多类型后，容易遗漏 `when` 分支、JSON 解析、编辑表单字段与悬浮点位渲染等联动点。
+- 处理：本次统一补齐四类同步改动：`模型枚举与显示名`、`执行器分发`、`存储反序列化兼容`、`UI 按动作能力动态展示字段`。
+- 建议：后续每次新增动作类型，优先按“模型 -> 执行 -> 存储 -> UI”清单逐项核对，并至少执行一次 `:app:assembleDebug` 兜底。
+
 ### 2026-03-22
 1. Compose 图标类运行时崩溃排查：
 - 现象：`NoClassDefFoundError: androidx.compose.material.icons.Icons`。

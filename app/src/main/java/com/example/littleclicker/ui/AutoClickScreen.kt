@@ -61,6 +61,8 @@ import com.example.littleclicker.autoclick.AutoClickRecordingMode
 import com.example.littleclicker.autoclick.AutoClickRunMode
 import com.example.littleclicker.autoclick.TimeSyncState
 import com.example.littleclicker.autoclick.displayName
+import com.example.littleclicker.autoclick.usesScreenCoordinates
+import com.example.littleclicker.autoclick.usesTouchDuration
 import com.example.littleclicker.service.FloatingWindowService
 import com.example.littleclicker.service.TimerFloatingWindowService
 import com.example.littleclicker.update.AppNoticeInfo
@@ -407,9 +409,9 @@ internal fun AutoClickScreen(
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Text(text = "点击点列表", fontWeight = FontWeight.Bold)
-                Button(onClick = { AutoClickCoordinator.addPoint() }) {
-                    Text("添加点击点")
+                Text(text = "动作列表", fontWeight = FontWeight.Bold)
+                Button(onClick = { showAddActionDialog(context) }) {
+                    Text("添加动作")
                 }
             }
         }
@@ -417,7 +419,7 @@ internal fun AutoClickScreen(
         if (profile.points.isEmpty()) {
             item {
                 Text(
-                    text = "暂无点击点，可点击“添加点击点”或在动作悬浮窗中添加。",
+                    text = "暂无动作，可点击“添加动作”或在动作悬浮窗中添加。",
                     color = MiuixTheme.colorScheme.onBackgroundVariant
                 )
             }
@@ -437,17 +439,23 @@ internal fun AutoClickScreen(
                             .padding(14.dp),
                         verticalArrangement = Arrangement.spacedBy(6.dp)
                     ) {
-                        Text("点击点 #${point.id}", fontWeight = FontWeight.SemiBold)
+                        Text("动作 #${point.id}", fontWeight = FontWeight.SemiBold)
                         Text(
                             text = "动作类型：${point.actionType.displayName}",
                             color = MiuixTheme.colorScheme.onBackgroundVariant
                         )
+                        if (point.actionType.usesScreenCoordinates) {
+                            Text(
+                                text = "中心坐标：(${point.x}, ${point.y})",
+                                color = MiuixTheme.colorScheme.onBackgroundVariant
+                            )
+                        }
                         Text(
-                            text = "中心坐标：(${point.x}, ${point.y})",
-                            color = MiuixTheme.colorScheme.onBackgroundVariant
-                        )
-                        Text(
-                            text = "延迟/触摸/重复：${point.delayMs}ms / ${point.touchDurationMs}ms / ${point.repeatCount}",
+                            text = if (point.actionType.usesTouchDuration) {
+                                "延迟/触摸/重复：${point.delayMs}ms / ${point.touchDurationMs}ms / ${point.repeatCount}"
+                            } else {
+                                "延迟/重复：${point.delayMs}ms / ${point.repeatCount}"
+                            },
                             color = MiuixTheme.colorScheme.onBackgroundVariant
                         )
                         if (point.actionType == AutoClickActionType.Swipe) {
@@ -464,16 +472,16 @@ internal fun AutoClickScreen(
                                 onClick = { showPointEditDialog(context, point) },
                                 modifier = Modifier.weight(1f)
                             ) {
-                                Text("编辑点击点")
+                                Text("编辑动作")
                             }
                             Button(
                                 onClick = {
                                     AutoClickCoordinator.removePoint(point.id)
-                                    Toast.makeText(context, "已删除点击点 #${point.id}", Toast.LENGTH_SHORT).show()
+                                    Toast.makeText(context, "已删除动作 #${point.id}", Toast.LENGTH_SHORT).show()
                                 },
                                 modifier = Modifier.weight(1f)
                             ) {
-                                Text("删除点击点")
+                                Text("删除动作")
                             }
                         }
                     }
@@ -738,19 +746,25 @@ private fun showPointEditDialog(
     val touchInput = createNumberInput(context, latestPoint.touchDurationMs.toInt())
     val repeatInput = createNumberInput(context, latestPoint.repeatCount)
     val isSwipeAction = latestPoint.actionType == AutoClickActionType.Swipe
+    val usesScreenCoordinates = latestPoint.actionType.usesScreenCoordinates
+    val usesTouchDuration = latestPoint.actionType.usesTouchDuration
 
     val container = LinearLayout(context).apply {
         orientation = LinearLayout.VERTICAL
         setPadding(40, 30, 40, 10)
         addView(buildField(context, "动作类型", createReadOnlyInput(context, latestPoint.actionType.displayName)))
-        addView(buildField(context, "X 中心坐标", xInput))
-        addView(buildField(context, "Y 中心坐标", yInput))
+        if (usesScreenCoordinates) {
+            addView(buildField(context, "X 中心坐标", xInput))
+            addView(buildField(context, "Y 中心坐标", yInput))
+        }
         if (isSwipeAction) {
             addView(buildField(context, "滑动结束X", endXInput))
             addView(buildField(context, "滑动结束Y", endYInput))
         }
         addView(buildField(context, "点击延迟(ms)", delayInput))
-        addView(buildField(context, "触摸时长(ms)", touchInput))
+        if (usesTouchDuration) {
+            addView(buildField(context, "触摸时长(ms)", touchInput))
+        }
         addView(buildField(context, "重复次数", repeatInput))
     }
     val scrollContainer = ScrollView(context).apply {
@@ -759,14 +773,22 @@ private fun showPointEditDialog(
     }
 
     AlertDialog.Builder(context)
-        .setTitle("编辑点击点 #${point.id}")
+        .setTitle("编辑动作 #${point.id}")
         .setView(scrollContainer)
         .setNegativeButton("取消", null)
         .setPositiveButton("保存") { _, _ ->
             val currentPoint = AutoClickCoordinator.profile.value.points.firstOrNull { it.id == point.id } ?: point
-            val safeX = xInput.text.toString().toIntOrNull()?.coerceAtLeast(0) ?: currentPoint.x
-            val safeY = yInput.text.toString().toIntOrNull()?.coerceAtLeast(0) ?: currentPoint.y
             val actionType = currentPoint.actionType
+            val safeX = if (actionType.usesScreenCoordinates) {
+                xInput.text.toString().toIntOrNull()?.coerceAtLeast(0) ?: currentPoint.x
+            } else {
+                currentPoint.x
+            }
+            val safeY = if (actionType.usesScreenCoordinates) {
+                yInput.text.toString().toIntOrNull()?.coerceAtLeast(0) ?: currentPoint.y
+            } else {
+                currentPoint.y
+            }
             val endX = if (actionType == AutoClickActionType.Swipe) {
                 endXInput.text.toString().toIntOrNull()
             } else {
@@ -796,17 +818,40 @@ private fun showPointEditDialog(
                 endX = safeEndX,
                 endY = safeEndY,
                 delayMs = xInputToLong(delayInput, currentPoint.delayMs, min = 0L),
-                touchDurationMs = xInputToLong(touchInput, currentPoint.touchDurationMs, min = 1L),
+                touchDurationMs = if (actionType.usesTouchDuration) {
+                    xInputToLong(touchInput, currentPoint.touchDurationMs, min = 1L)
+                } else {
+                    currentPoint.touchDurationMs
+                },
                 repeatCount = repeatInput.text.toString().toIntOrNull()?.coerceAtLeast(1) ?: currentPoint.repeatCount
             )
             val saveResult = AutoClickCoordinator.saveProfile()
             val tip = if (saveResult.isSuccess) {
-                "点击点 #${point.id} 已更新并自动保存"
+                "动作 #${point.id} 已更新并自动保存"
             } else {
-                "点击点 #${point.id} 已更新，自动保存失败：${saveResult.exceptionOrNull()?.message ?: "未知错误"}"
+                "动作 #${point.id} 已更新，自动保存失败：${saveResult.exceptionOrNull()?.message ?: "未知错误"}"
             }
             Toast.makeText(context, tip, Toast.LENGTH_SHORT).show()
         }
+        .show()
+}
+
+private fun showAddActionDialog(context: Context) {
+    val labels = arrayOf("点击", "滑动", "Home", "Back", "多任务")
+    AlertDialog.Builder(context)
+        .setTitle("添加动作")
+        .setItems(labels) { _, which ->
+            val type = when (which) {
+                1 -> AutoClickActionType.Swipe
+                2 -> AutoClickActionType.Home
+                3 -> AutoClickActionType.Back
+                4 -> AutoClickActionType.Recents
+                else -> AutoClickActionType.Click
+            }
+            val point = AutoClickCoordinator.addAction(type)
+            Toast.makeText(context, "已添加：${type.displayName} #${point.id}", Toast.LENGTH_SHORT).show()
+        }
+        .setNegativeButton("取消", null)
         .show()
 }
 

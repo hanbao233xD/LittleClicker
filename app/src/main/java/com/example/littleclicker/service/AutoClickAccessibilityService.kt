@@ -276,6 +276,19 @@ class AutoClickAccessibilityService : AccessibilityService() {
                     durationMs = point.touchDurationMs.coerceAtLeast(1L)
                 )
             }
+
+            AutoClickActionType.Home -> dispatchGlobalAction(GLOBAL_ACTION_HOME)
+            AutoClickActionType.Back -> dispatchGlobalAction(GLOBAL_ACTION_BACK)
+            AutoClickActionType.Recents -> dispatchGlobalAction(GLOBAL_ACTION_RECENTS)
+        }
+    }
+
+    private fun dispatchGlobalAction(globalAction: Int): GestureDispatchResult {
+        val started = performGlobalAction(globalAction)
+        return if (started) {
+            GestureDispatchResult.Completed
+        } else {
+            GestureDispatchResult.FailedToStart
         }
     }
 

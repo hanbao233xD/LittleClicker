@@ -30,13 +30,28 @@ data class AutoClickProfile(
 enum class AutoClickActionType {
     Click,
     Swipe,
+    Home,
+    Back,
+    Recents,
 }
 
 val AutoClickActionType.displayName: String
     get() = when (this) {
         AutoClickActionType.Click -> "点击"
         AutoClickActionType.Swipe -> "滑动"
+        AutoClickActionType.Home -> "Home"
+        AutoClickActionType.Back -> "Back"
+        AutoClickActionType.Recents -> "多任务"
     }
+
+val AutoClickActionType.usesScreenCoordinates: Boolean
+    get() = when (this) {
+        AutoClickActionType.Click, AutoClickActionType.Swipe -> true
+        AutoClickActionType.Home, AutoClickActionType.Back, AutoClickActionType.Recents -> false
+    }
+
+val AutoClickActionType.usesTouchDuration: Boolean
+    get() = usesScreenCoordinates
 
 enum class AutoClickRunState {
     Idle,

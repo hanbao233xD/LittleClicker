@@ -402,10 +402,16 @@ object AutoClickCoordinator {
                         val resolvedEndX = when (resolvedType) {
                             AutoClickActionType.Click -> null
                             AutoClickActionType.Swipe -> (endX ?: point.endX ?: (resolvedX + 200)).coerceAtLeast(0)
+                            AutoClickActionType.Home -> null
+                            AutoClickActionType.Back -> null
+                            AutoClickActionType.Recents -> null
                         }
                         val resolvedEndY = when (resolvedType) {
                             AutoClickActionType.Click -> null
                             AutoClickActionType.Swipe -> (endY ?: point.endY ?: resolvedY).coerceAtLeast(0)
+                            AutoClickActionType.Home -> null
+                            AutoClickActionType.Back -> null
+                            AutoClickActionType.Recents -> null
                         }
                         point.copy(
                             x = resolvedX,
@@ -815,10 +821,16 @@ object AutoClickCoordinator {
                         endX = when (normalizedType) {
                             AutoClickActionType.Click -> null
                             AutoClickActionType.Swipe -> (point.endX ?: (point.x + 200)).coerceAtLeast(0)
+                            AutoClickActionType.Home -> null
+                            AutoClickActionType.Back -> null
+                            AutoClickActionType.Recents -> null
                         },
                         endY = when (normalizedType) {
                             AutoClickActionType.Click -> null
                             AutoClickActionType.Swipe -> (point.endY ?: point.y).coerceAtLeast(0)
+                            AutoClickActionType.Home -> null
+                            AutoClickActionType.Back -> null
+                            AutoClickActionType.Recents -> null
                         },
                         delayMs = point.delayMs.coerceAtLeast(0L),
                         touchDurationMs = point.touchDurationMs.coerceAtLeast(1L),
@@ -852,6 +864,27 @@ object AutoClickCoordinator {
                 actionType = AutoClickActionType.Swipe,
                 endX = boundedBase + 200,
                 endY = boundedBase
+            )
+
+            AutoClickActionType.Home -> AutoClickPoint(
+                id = nextId,
+                x = 0,
+                y = 0,
+                actionType = AutoClickActionType.Home
+            )
+
+            AutoClickActionType.Back -> AutoClickPoint(
+                id = nextId,
+                x = 0,
+                y = 0,
+                actionType = AutoClickActionType.Back
+            )
+
+            AutoClickActionType.Recents -> AutoClickPoint(
+                id = nextId,
+                x = 0,
+                y = 0,
+                actionType = AutoClickActionType.Recents
             )
         }
     }

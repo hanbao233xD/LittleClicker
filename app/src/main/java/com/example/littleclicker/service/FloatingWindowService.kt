@@ -95,6 +95,8 @@ import com.example.littleclicker.autoclick.AutoClickPoint
 import com.example.littleclicker.autoclick.AutoClickRecordingMode
 import com.example.littleclicker.autoclick.AutoClickRunState
 import com.example.littleclicker.autoclick.displayName
+import com.example.littleclicker.autoclick.usesScreenCoordinates
+import com.example.littleclicker.autoclick.usesTouchDuration
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -320,6 +322,10 @@ class FloatingWindowService : LifecycleService() {
         }
 
         points.forEach { point ->
+            if (!point.actionType.usesScreenCoordinates) {
+                removePointOverlayGroup(pointViews.remove(point.id))
+                return@forEach
+            }
             val boundedCenter = clampPointCenter(IntOffset(point.x, point.y))
             if (point.actionType == AutoClickActionType.Swipe) {
                 val rawEnd = IntOffset(
@@ -734,19 +740,25 @@ class FloatingWindowService : LifecycleService() {
         val touchInput = createNumberInput(latestPoint.touchDurationMs.toInt())
         val repeatInput = createNumberInput(latestPoint.repeatCount)
         val isSwipeAction = latestPoint.actionType == AutoClickActionType.Swipe
+        val usesScreenCoordinates = latestPoint.actionType.usesScreenCoordinates
+        val usesTouchDuration = latestPoint.actionType.usesTouchDuration
 
         val container = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             setPadding(40, 30, 40, 10)
             addView(buildField("动作类型", createReadOnlyInput(latestPoint.actionType.displayName)))
-            addView(buildField("X 中心坐标", xInput))
-            addView(buildField("Y 中心坐标", yInput))
+            if (usesScreenCoordinates) {
+                addView(buildField("X 中心坐标", xInput))
+                addView(buildField("Y 中心坐标", yInput))
+            }
             if (isSwipeAction) {
                 addView(buildField("滑动结束X", endXInput))
                 addView(buildField("滑动结束Y", endYInput))
             }
             addView(buildField("点击延迟(ms)", delayInput))
-            addView(buildField("触摸时长(ms)", touchInput))
+            if (usesTouchDuration) {
+                addView(buildField("触摸时长(ms)", touchInput))
+            }
             addView(buildField("重复次数", repeatInput))
         }
         val scrollContainer = ScrollView(this).apply {
@@ -755,22 +767,38 @@ class FloatingWindowService : LifecycleService() {
         }
 
         val dialog = AlertDialog.Builder(this)
-            .setTitle("编辑点击点 #${point.id}")
+            .setTitle("编辑动作 #${point.id}")
             .setView(scrollContainer)
             .setNegativeButton("取消", null)
             .setPositiveButton("保存") { _, _ ->
                 val currentPoint = AutoClickCoordinator.profile.value.points
                     .firstOrNull { it.id == point.id }
                     ?: point
-                val x = xInput.text.toString().toIntOrNull() ?: currentPoint.x
-                val y = yInput.text.toString().toIntOrNull() ?: currentPoint.y
                 val actionType = currentPoint.actionType
+                val x = if (actionType.usesScreenCoordinates) {
+                    xInput.text.toString().toIntOrNull() ?: currentPoint.x
+                } else {
+                    currentPoint.x
+                }
+                val y = if (actionType.usesScreenCoordinates) {
+                    yInput.text.toString().toIntOrNull() ?: currentPoint.y
+                } else {
+                    currentPoint.y
+                }
                 val endX = if (actionType == AutoClickActionType.Swipe) endXInput.text.toString().toIntOrNull() else null
                 val endY = if (actionType == AutoClickActionType.Swipe) endYInput.text.toString().toIntOrNull() else null
                 val delayMs = xInputToLong(delayInput, currentPoint.delayMs, min = 0L)
-                val touchMs = xInputToLong(touchInput, currentPoint.touchDurationMs, min = 1L)
+                val touchMs = if (actionType.usesTouchDuration) {
+                    xInputToLong(touchInput, currentPoint.touchDurationMs, min = 1L)
+                } else {
+                    currentPoint.touchDurationMs
+                }
                 val repeat = repeatInput.text.toString().toIntOrNull()?.coerceAtLeast(1) ?: currentPoint.repeatCount
-                val bounded = clampPointCenter(IntOffset(x, y))
+                val bounded = if (actionType.usesScreenCoordinates) {
+                    clampPointCenter(IntOffset(x, y))
+                } else {
+                    IntOffset(currentPoint.x, currentPoint.y)
+                }
                 val boundedEnd = if (actionType == AutoClickActionType.Swipe) {
                     val rawEnd = IntOffset(
                         (endX ?: currentPoint.endX ?: (bounded.x + 200)).coerceAtLeast(0),
@@ -865,12 +893,15 @@ class FloatingWindowService : LifecycleService() {
     }
 
     private fun showAddActionDialog() {
-        val labels = arrayOf("点击", "滑动")
+        val labels = arrayOf("点击", "滑动", "Home", "Back", "多任务")
         val dialog = AlertDialog.Builder(this)
             .setTitle("添加动作")
             .setItems(labels) { _, which ->
                 val type = when (which) {
                     1 -> AutoClickActionType.Swipe
+                    2 -> AutoClickActionType.Home
+                    3 -> AutoClickActionType.Back
+                    4 -> AutoClickActionType.Recents
                     else -> AutoClickActionType.Click
                 }
                 val point = AutoClickCoordinator.addAction(type)
@@ -933,6 +964,9 @@ class FloatingWindowService : LifecycleService() {
                                 val replayDuration = when (actionType) {
                                     AutoClickActionType.Click -> rawDuration.coerceAtLeast(1L)
                                     AutoClickActionType.Swipe -> rawDuration.coerceAtLeast(1L)
+                                    AutoClickActionType.Home -> rawDuration.coerceAtLeast(1L)
+                                    AutoClickActionType.Back -> rawDuration.coerceAtLeast(1L)
+                                    AutoClickActionType.Recents -> rawDuration.coerceAtLeast(1L)
                                 }
                                 val recorded = AutoClickCoordinator.addRecordedAction(
                                     actionType = actionType,
@@ -954,6 +988,9 @@ class FloatingWindowService : LifecycleService() {
                                         val replayDelayMs = when (recorded.actionType) {
                                             AutoClickActionType.Click -> RECORDED_CLICK_REPLAY_DELAY_MS
                                             AutoClickActionType.Swipe -> RECORDED_SWIPE_REPLAY_DELAY_MS
+                                            AutoClickActionType.Home -> RECORDED_CLICK_REPLAY_DELAY_MS
+                                            AutoClickActionType.Back -> RECORDED_CLICK_REPLAY_DELAY_MS
+                                            AutoClickActionType.Recents -> RECORDED_CLICK_REPLAY_DELAY_MS
                                         }
                                         val replayed = AutoClickAccessibilityService.replayRecordedAction(
                                             point = recorded,

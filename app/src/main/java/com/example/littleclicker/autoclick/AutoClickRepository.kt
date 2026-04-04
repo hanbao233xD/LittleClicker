@@ -222,10 +222,14 @@ object AutoClickRepository {
     }
 
     private fun parseActionType(raw: String?): AutoClickActionType {
-        return if (raw.equals("Swipe", ignoreCase = true)) {
-            AutoClickActionType.Swipe
-        } else {
-            AutoClickActionType.Click
+        return when {
+            raw.equals("Swipe", ignoreCase = true) -> AutoClickActionType.Swipe
+            raw.equals("Home", ignoreCase = true) -> AutoClickActionType.Home
+            raw.equals("Back", ignoreCase = true) -> AutoClickActionType.Back
+            raw.equals("Recents", ignoreCase = true) ||
+                raw.equals("Recent", ignoreCase = true) ||
+                raw.equals("多任务", ignoreCase = true) -> AutoClickActionType.Recents
+            else -> AutoClickActionType.Click
         }
     }
 

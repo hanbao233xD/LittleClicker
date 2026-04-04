@@ -1,6 +1,6 @@
 # LittleClicker 模块说明
 
-最后更新：2026-03-25
+最后更新：2026-04-05
 
 ## 1. 构建模块（Gradle）
 - 作用：管理 Android App 编译、依赖与 Compose 构建能力。
@@ -54,7 +54,7 @@
     - 设定时间规则展示与过期提示
   - 运行项：开启悬浮窗、立即开始、暂停/继续、停止、保存配置。
   - 悬浮窗启动闸门：动作悬浮窗与定时悬浮窗启动前统一检查 `悬浮窗/无障碍/电池优化` 三项权限，缺失时自动跳转对应设置页并提示，阻止启动。
-  - 点击点列表：支持直接编辑与删除；编辑弹窗调用现有 `updatePointConfig` 更新逻辑，删除调用 `removePoint`。
+  - 动作列表：支持 `点击/滑动/Home/Back/多任务` 添加、编辑与删除；编辑弹窗调用现有 `updatePointConfig` 更新逻辑，删除调用 `removePoint`。
 
 ## 5. 自动点击数据模块（Models + Repository）
 - 作用：定义自动点击数据结构并提供本地 JSON 持久化。
@@ -64,7 +64,8 @@
     - `app/src/main/java/com/example/littleclicker/autoclick/AutoClickRepository.kt`
   - 核心模型：
     - `AutoClickPoint`
-      - 新增动作类型：`Click` / `Swipe`
+      - 动作类型：`Click` / `Swipe` / `Home` / `Back` / `Recents`
+      - 仅 `Click` / `Swipe` 使用屏幕坐标
       - 滑动动作支持终点坐标：`endX` / `endY`
     - `AutoClickProfile`
       - 新增 `ntpServerHost`（默认 `ntp.aliyun.com`）
@@ -93,7 +94,7 @@
 - 作用：执行自动点击手势队列，并支持并发保护与暂停/继续/停止。
 - 实现方法：
   - 文件：`app/src/main/java/com/example/littleclicker/service/AutoClickAccessibilityService.kt`
-  - 执行方式：`dispatchGesture` + 单点点击/滑动手势。
+  - 执行方式：`dispatchGesture`（点击/滑动）+ `performGlobalAction`（Home/Back/多任务）。
   - 录制回放：提供“单动作回放”入口，供录制流程在每次记录后立即模拟刚录制动作。
   - 队列规则：按点位顺序、每点重复、全局循环展开执行。
   - 运行中热键：支持按下“音量下键”强制停止当前自动点击任务。
@@ -114,6 +115,7 @@
   - 穿透机制：录制回放窗口内临时将录制层设为不可触摸，使模拟动作透传到底层应用。
   - 防重复录制：自动模拟执行期间启用短暂输入忽略窗口，避免把模拟动作再次录进动作列表。
   - 覆盖层策略：录制态下新建点位覆盖层默认不可触摸，降低回放时路径被新点位短暂遮挡的概率。
+  - 非坐标动作策略：`Home` / `Back` / `多任务` 不渲染屏幕点位气泡，仅在动作列表中展示与编辑。
   - 动作展示：面板列表与画圈标签统一显示 `序号.动作类型`（如 `1.点击`、`2.滑动`）。
   - 动作编辑：列表内支持铅笔图标编辑、垃圾桶图标删除。
   - 编辑防遮挡：长按进入“编辑动作”时，临时将动作悬浮层完全隐藏（透明度 `0`）且不可触摸；编辑框关闭后自动恢复。

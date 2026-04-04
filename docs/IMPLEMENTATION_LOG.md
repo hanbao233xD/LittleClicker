@@ -2,6 +2,18 @@
 
 最后更新：2026-04-05
 
+## 2026-04-05（自动点击支持三大金刚键：Home/Back/多任务）
+- 需求实现：
+  - 自动点击动作新增 `Home`、`Back`、`多任务` 三种系统按键模拟能力。
+- 代码改动：
+  - `AutoClickModels`：扩展 `AutoClickActionType`，新增展示名与动作能力标记（是否需要坐标/触摸时长）。
+  - `AutoClickAccessibilityService`：新增全局动作分发，按动作类型调用 `performGlobalAction(GLOBAL_ACTION_HOME/BACK/RECENTS)`。
+  - `FloatingWindowService`：添加动作弹窗新增三种动作；非坐标动作不再显示屏幕点位气泡；编辑弹窗按动作类型动态显示字段。
+  - `AutoClickCoordinator` / `AutoClickRepository`：补齐新动作类型的创建、归一化与 JSON 反序列化兼容。
+  - `AutoClickScreen`：主页面“添加动作”支持新增三种动作；动作列表与编辑弹窗适配非坐标动作文案与字段展示。
+- 验证结果：
+  - `./gradlew :app:assembleDebug` 通过。
+
 ## 2026-04-05（编辑点击点弹窗支持滚动）
 - 问题现象：
   - 编辑点击点时，弹窗内容在小屏设备上超出可视区域，底部配置项无法触达。
