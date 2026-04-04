@@ -1439,6 +1439,7 @@ private fun FloatingPanel(
                         "运行"
                     },
                     onClick = onToggleRun,
+                    triggerOnPressDown = runState == AutoClickRunState.Running || runState == AutoClickRunState.Paused,
                     isDarkTheme = isDarkTheme,
                     scaleFactor = scaleFactor
                 )
@@ -1627,6 +1628,7 @@ private fun PanelActionButton(
     label: String? = null,
     contentDescription: String,
     onClick: () -> Unit,
+    triggerOnPressDown: Boolean = false,
     isDarkTheme: Boolean,
     scaleFactor: Float,
 ) {
@@ -1641,7 +1643,20 @@ private fun PanelActionButton(
             .size(buttonSize)
             .background(backgroundColor, CircleShape)
             .border(1.dp, borderColor, CircleShape)
-            .clickable(onClick = onClick),
+            .then(
+                if (triggerOnPressDown) {
+                    Modifier.pointerInput(onClick) {
+                        detectTapGestures(
+                            onPress = {
+                                onClick()
+                                tryAwaitRelease()
+                            }
+                        )
+                    }
+                } else {
+                    Modifier.clickable(onClick = onClick)
+                }
+            ),
         contentAlignment = Alignment.Center
     ) {
         if (label != null) {
