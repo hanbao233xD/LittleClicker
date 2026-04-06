@@ -71,12 +71,7 @@ internal fun ensureOverlayStartPermissions(context: Context): Boolean {
         openAccessibilitySettings(context)
         Toast.makeText(context, "请先开启无障碍服务", Toast.LENGTH_SHORT).show()
         return false
-    }
-    if (!isIgnoringBatteryOptimizations(context)) {
-        openBatteryOptimizationSettings(context)
-        Toast.makeText(context, "请先允许忽略电池优化", Toast.LENGTH_SHORT).show()
-        return false
-    }
+    }   
     return true
 }
 
