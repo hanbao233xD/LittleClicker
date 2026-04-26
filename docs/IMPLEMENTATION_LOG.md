@@ -907,3 +907,25 @@
     - `AutoClickSerializationTest` 增补 `clickRandomOffsetPx` 的序列化回归与旧配置默认值断言。
 - 验证结果：
   - `./gradlew :app:compileDebugKotlin :app:testDebugUnitTest --no-daemon` 通过。
+
+## 2026-04-26（悬浮窗布局锁定：锁图标 + 红字提示 + 配置持久化）
+- 需求实现：
+  - 动作悬浮窗增加锁定图标，支持“锁定布局/解锁布局”；
+  - 锁定状态写入配置文件并可随配置恢复；
+  - 锁定时屏幕显示红字“布局已锁定”。
+- 修复内容：
+  - 数据模型与存储：
+    - `AutoClickProfile` 新增 `layoutLocked` 字段（默认 `false`）；
+    - `AutoClickRepository` 增加 `layoutLocked` 的 JSON 读写与旧配置兼容默认值。
+  - 业务逻辑：
+    - `AutoClickCoordinator` 新增 `updateLayoutLocked(...)`。
+  - 悬浮窗 UI 与交互：
+    - `FloatingPanel` 新增锁图标按钮（`Lock / LockOpen`）；
+    - 切换锁定时立即 `saveProfile()` 持久化；
+    - 锁定时显示红色文本“布局已锁定”；
+    - 锁定后禁用拖拽手柄拖动；
+    - 点位悬浮球改为不可触摸（禁止误拖拽/误改布局）。
+  - 单测：
+    - `AutoClickSerializationTest` 增加 `layoutLocked` 序列化回归断言与旧配置默认值断言。
+- 验证结果：
+  - `./gradlew :app:compileDebugKotlin :app:testDebugUnitTest --no-daemon` 通过。

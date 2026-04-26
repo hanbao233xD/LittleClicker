@@ -45,6 +45,8 @@ import androidx.compose.material.icons.filled.AddCircleOutline
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
+import androidx.compose.material.icons.filled.Lock
+import androidx.compose.material.icons.filled.LockOpen
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Stop
 import androidx.compose.material3.Card
@@ -192,16 +194,14 @@ class FloatingWindowService : LifecycleService() {
         profileCollectJob = lifecycleScope.launch {
             AutoClickCoordinator.profile.collect { profile ->
                 syncPointOverlays(profile.points)
+                setPointOverlaysTouchable(shouldPointOverlaysBeTouchableNow())
             }
         }
 
         runtimeCollectJob?.cancel()
         runtimeCollectJob = lifecycleScope.launch {
             AutoClickCoordinator.runtime.collect { runtime ->
-                val touchable = runtime.state != AutoClickRunState.Running &&
-                    runtime.state != AutoClickRunState.Paused &&
-                    !AutoClickCoordinator.recording.value.isRecording
-                setPointOverlaysTouchable(touchable)
+                setPointOverlaysTouchable(shouldPointOverlaysBeTouchableNow())
             }
         }
 
@@ -214,10 +214,7 @@ class FloatingWindowService : LifecycleService() {
                 }
                 val shouldCaptureInput = recording.isRecording && !isRecordCaptureTemporarilyPassthrough()
                 setRecordCaptureTouchable(shouldCaptureInput)
-                val touchable = !recording.isRecording &&
-                    AutoClickCoordinator.runtime.value.state != AutoClickRunState.Running &&
-                    AutoClickCoordinator.runtime.value.state != AutoClickRunState.Paused
-                setPointOverlaysTouchable(touchable)
+                setPointOverlaysTouchable(shouldPointOverlaysBeTouchableNow())
             }
         }
     }
@@ -229,10 +226,12 @@ class FloatingWindowService : LifecycleService() {
                 MaterialTheme(colorScheme = if (isDarkTheme) darkColorScheme() else lightColorScheme()) {
                     val runtime by AutoClickCoordinator.runtime.collectAsState()
                     val recording by AutoClickCoordinator.recording.collectAsState()
+                    val profile by AutoClickCoordinator.profile.collectAsState()
                     FloatingPanel(
                         runState = runtime.state,
                         runMessage = runtime.message,
                         isRecording = recording.isRecording,
+                        isLayoutLocked = profile.layoutLocked,
                         onSizeChanged = { size ->
                             panelSize = size
                             updatePanelOffset(panelOffset)
@@ -273,6 +272,23 @@ class FloatingWindowService : LifecycleService() {
                                 "没有可删除的动作"
                             } else {
                                 "已删除最新动作：${removed.actionType.displayName}"
+                            }
+                            Toast.makeText(this@FloatingWindowService, tip, Toast.LENGTH_SHORT).show()
+                        },
+                        onToggleLayoutLock = {
+                            val nextLocked = !profile.layoutLocked
+                            AutoClickCoordinator.updateLayoutLocked(nextLocked)
+                            val saveResult = AutoClickCoordinator.saveProfile()
+                            setPointOverlaysTouchable(shouldPointOverlaysBeTouchableNow())
+                            val tip = if (saveResult.isSuccess) {
+                                if (nextLocked) {
+                                    "布局已锁定"
+                                } else {
+                                    "布局已解锁"
+                                }
+                            } else {
+                                val stateText = if (nextLocked) "锁定" else "解锁"
+                                "布局已$stateText，但保存失败：${saveResult.exceptionOrNull()?.message ?: "未知错误"}"
                             }
                             Toast.makeText(this@FloatingWindowService, tip, Toast.LENGTH_SHORT).show()
                         },
@@ -1218,7 +1234,11 @@ class FloatingWindowService : LifecycleService() {
     private fun shouldPointOverlaysBeTouchableNow(): Boolean {
         val runtimeState = AutoClickCoordinator.runtime.value.state
         val recording = AutoClickCoordinator.recording.value.isRecording
-        return !recording && runtimeState != AutoClickRunState.Running && runtimeState != AutoClickRunState.Paused
+        val layoutLocked = AutoClickCoordinator.profile.value.layoutLocked
+        return !layoutLocked &&
+            !recording &&
+            runtimeState != AutoClickRunState.Running &&
+            runtimeState != AutoClickRunState.Paused
     }
 
     private fun applyPointOverlayTouchableFlag(
@@ -1420,12 +1440,14 @@ private fun FloatingPanel(
     runState: AutoClickRunState,
     runMessage: String?,
     isRecording: Boolean,
+    isLayoutLocked: Boolean,
     onSizeChanged: (IntSize) -> Unit,
     onDrag: (IntOffset) -> Unit,
     onToggleRun: () -> Unit,
     onToggleRecord: () -> Unit,
     onAddAction: () -> Unit,
     onDeleteLatest: () -> Unit,
+    onToggleLayoutLock: () -> Unit,
     onEditPoint: (AutoClickPoint) -> Unit,
     onDeletePoint: (AutoClickPoint) -> Unit,
     onClosePanel: () -> Unit,
@@ -1458,12 +1480,18 @@ private fun FloatingPanel(
                     .fillMaxWidth()
                     .height(handleHeight)
                     .background(panelHandleColor, RoundedCornerShape(handleCorner))
-                    .pointerInput(Unit) {
-                        detectDragGestures { change, dragAmount ->
-                            change.consume()
-                            onDrag(IntOffset(dragAmount.x.roundToInt(), dragAmount.y.roundToInt()))
+                    .then(
+                        if (isLayoutLocked) {
+                            Modifier
+                        } else {
+                            Modifier.pointerInput(Unit) {
+                                detectDragGestures { change, dragAmount ->
+                                    change.consume()
+                                    onDrag(IntOffset(dragAmount.x.roundToInt(), dragAmount.y.roundToInt()))
+                                }
+                            }
                         }
-                    }
+                    )
             )
             Column(
                 verticalArrangement = Arrangement.spacedBy(sideButtonSpacing),
@@ -1507,12 +1535,27 @@ private fun FloatingPanel(
                     scaleFactor = scaleFactor
                 )
                 PanelActionButton(
+                    icon = if (isLayoutLocked) Icons.Filled.Lock else Icons.Filled.LockOpen,
+                    contentDescription = if (isLayoutLocked) "布局已锁定，点击解锁" else "布局未锁定，点击锁定",
+                    onClick = onToggleLayoutLock,
+                    isDarkTheme = isDarkTheme,
+                    scaleFactor = scaleFactor
+                )
+                PanelActionButton(
                     icon = Icons.Filled.Close,
                     contentDescription = "关闭悬浮窗",
                     onClick = onClosePanel,
                     isDarkTheme = isDarkTheme,
                     scaleFactor = scaleFactor
                 )
+                if (isLayoutLocked) {
+                    Text(
+                        text = "布局已锁定",
+                        color = Color(0xFFFF3B30),
+                        style = MaterialTheme.typography.labelSmall,
+                        textAlign = TextAlign.Center
+                    )
+                }
             }
         }
     }

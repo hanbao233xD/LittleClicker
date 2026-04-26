@@ -468,6 +468,12 @@ object AutoClickCoordinator {
         }
     }
 
+    fun updateLayoutLocked(layoutLocked: Boolean) {
+        updateProfile { current ->
+            current.copy(layoutLocked = layoutLocked)
+        }
+    }
+
     fun updateRunMode(runMode: AutoClickRunMode) {
         updateProfile { current ->
             current.copy(runMode = runMode)

@@ -20,6 +20,7 @@ class AutoClickSerializationTest {
                 AutoClickPoint(id = 2, x = 500, y = 900, delayMs = 50, touchDurationMs = 20, repeatCount = 1)
             ),
             cycleCount = 3,
+            layoutLocked = true,
             runMode = AutoClickRunMode.LoopUntilStopped,
             clickRandomOffsetPx = 9,
             ntpServerHost = "time.google.com",
@@ -35,6 +36,7 @@ class AutoClickSerializationTest {
         assertEquals(profile.name, restored.name)
         assertEquals(profile.points, restored.points)
         assertEquals(profile.cycleCount, restored.cycleCount)
+        assertEquals(profile.layoutLocked, restored.layoutLocked)
         assertEquals(profile.runMode, restored.runMode)
         assertEquals(profile.clickRandomOffsetPx, restored.clickRandomOffsetPx)
         assertEquals(profile.ntpServerHost, restored.ntpServerHost)
@@ -57,6 +59,7 @@ class AutoClickSerializationTest {
 
         val restored = AutoClickRepository.profileFromJson(legacyJson)
 
+        assertFalse(restored.layoutLocked)
         assertEquals(DEFAULT_CLICK_RANDOM_OFFSET_PX, restored.clickRandomOffsetPx)
         assertEquals(DEFAULT_NTP_SERVER_HOST, restored.ntpServerHost)
         assertNull(restored.scheduleRuleHms)

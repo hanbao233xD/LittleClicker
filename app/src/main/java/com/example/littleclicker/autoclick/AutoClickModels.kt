@@ -21,6 +21,7 @@ data class AutoClickProfile(
     val name: String = "默认自动点击配置",
     val points: List<AutoClickPoint> = emptyList(),
     val cycleCount: Int = 1,
+    val layoutLocked: Boolean = false,
     val runMode: AutoClickRunMode = AutoClickRunMode.RunOnce,
     val loopIntervalDelayMs: Long = DEFAULT_LOOP_INTERVAL_DELAY_MS,
     val clickRandomOffsetPx: Int = DEFAULT_CLICK_RANDOM_OFFSET_PX,
