@@ -209,7 +209,7 @@ internal fun ConfigManageScreen(onBack: () -> Unit) {
                             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number)
                         )
                         Text(
-                            text = "每次点击会在目标点周围随机偏移，0 表示关闭（用于降低固定轨迹检测风险）",
+                            text = "每次点击会在目标点周围随机偏移，0 表示关闭（反检测）",
                             color = MiuixTheme.colorScheme.onBackgroundVariant
                         )
                         Button(

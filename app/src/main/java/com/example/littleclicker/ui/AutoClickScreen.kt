@@ -10,7 +10,6 @@ import android.widget.EditText
 import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.NumberPicker
-import android.widget.ScrollView
 import android.widget.Toast
 import androidx.compose.foundation.background
 import androidx.compose.foundation.isSystemInDarkTheme
@@ -29,14 +28,15 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.CheckCircle
+import androidx.compose.material.icons.filled.ErrorOutline
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
-import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -57,16 +57,12 @@ import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.navigationevent.compose.LocalNavigationEventDispatcherOwner
 import androidx.navigationevent.compose.rememberNavigationEventDispatcherOwner
+import com.example.littleclicker.ActionManageActivity
 import com.example.littleclicker.ConfigManageActivity
 import com.example.littleclicker.R
-import com.example.littleclicker.autoclick.AutoClickActionType
 import com.example.littleclicker.autoclick.AutoClickCoordinator
-import com.example.littleclicker.autoclick.AutoClickPoint
 import com.example.littleclicker.autoclick.AutoClickRecordingMode
 import com.example.littleclicker.autoclick.TimeSyncState
-import com.example.littleclicker.autoclick.displayName
-import com.example.littleclicker.autoclick.usesScreenCoordinates
-import com.example.littleclicker.autoclick.usesTouchDuration
 import com.example.littleclicker.service.FloatingWindowService
 import com.example.littleclicker.service.TimerFloatingWindowService
 import com.example.littleclicker.update.AppNoticeInfo
@@ -77,6 +73,9 @@ import kotlin.random.Random
 import top.yukonga.miuix.kmp.basic.Button
 import top.yukonga.miuix.kmp.basic.Card
 import top.yukonga.miuix.kmp.basic.CardDefaults
+import top.yukonga.miuix.kmp.basic.Icon
+import top.yukonga.miuix.kmp.basic.SmallTitle
+import top.yukonga.miuix.kmp.basic.Switch
 import top.yukonga.miuix.kmp.basic.Text
 import top.yukonga.miuix.kmp.extra.SuperSwitch
 import top.yukonga.miuix.kmp.extra.WindowDropdown
@@ -120,7 +119,6 @@ internal fun AutoClickScreen(
         listOf(Color(0xFFF5F6FA), Color(0xFFEFF3FF))
     }
     val cardContainerColor = MiuixTheme.colorScheme.surfaceContainer
-    val successColor = if (isDarkTheme) Color(0xFF7AD7A1) else Color(0xFF1F8B4C)
 
     val nowAlignedMillis by produceState(initialValue = AutoClickCoordinator.currentAlignedNowMillis()) {
         while (true) {
@@ -164,6 +162,7 @@ internal fun AutoClickScreen(
         )
     }
     val pendingStatuses = statuses.filterNot { it.granted }
+    val allPermissionsReady = pendingStatuses.isEmpty()
     val randomTip = remember(refreshToken) { context.loadRandomAutoClickTip() }
     val recordModeItems = listOf("仅录制", "录制时穿透到应用")
     val selectedRecordModeIndex = when (profile.recordingMode) {
@@ -238,11 +237,11 @@ internal fun AutoClickScreen(
         }
 
         item {
-            if (pendingStatuses.isNotEmpty()) {
-                Text(
-                    text = "权限设置",
-                    fontWeight = FontWeight.Bold
-                )
+            PermissionStatusSummaryCard(
+                allReady = allPermissionsReady,
+                isDarkTheme = isDarkTheme
+            )
+            if (!allPermissionsReady) {
                 Spacer(modifier = Modifier.height(6.dp))
                 Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                     pendingStatuses.forEach { status ->
@@ -251,17 +250,6 @@ internal fun AutoClickScreen(
                             isDarkTheme = isDarkTheme
                         )
                     }
-                }
-            } else {
-                Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                    Text(
-                        text = "权限设置",
-                        fontWeight = FontWeight.Bold
-                    )
-                    Text(
-                        text = "权限已就绪，准备开始点击",
-                        color = successColor
-                    )
                 }
             }
         }
@@ -303,6 +291,14 @@ internal fun AutoClickScreen(
                         title = "动作悬浮窗开关",
                         summary = "用于编辑动作与录制"
                     )
+                    Button(
+                        onClick = {
+                            context.startActivity(Intent(context, ActionManageActivity::class.java))
+                        },
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Text("动作管理")
+                    }
                     val navigationEventOwner = rememberNavigationEventDispatcherOwner(parent = null)
                     CompositionLocalProvider(LocalNavigationEventDispatcherOwner provides navigationEventOwner) {
                         WindowDropdown(
@@ -368,8 +364,8 @@ internal fun AutoClickScreen(
                         }
                     )
                 },
-                onToggleTimerOverlay = {
-                    if (timerOverlayEnabled) {
+                onToggleTimerOverlay = { shouldEnable ->
+                    if (!shouldEnable) {
                         TimerFloatingWindowService.stop(context)
                         Toast.makeText(context, "定时悬浮窗已关闭", Toast.LENGTH_SHORT).show()
                     } else {
@@ -393,92 +389,6 @@ internal fun AutoClickScreen(
                 isDarkTheme = isDarkTheme,
                 cardContainerColor = cardContainerColor
             )
-        }
-
-        item {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Text(text = "动作管理", fontWeight = FontWeight.Bold)
-                Button(onClick = { showAddActionDialog(context) }) {
-                    Text("添加动作")
-                }
-            }
-        }
-
-        if (profile.points.isEmpty()) {
-            item {
-                Text(
-                    text = "暂无动作，可点击“添加动作”或在动作悬浮窗中添加。",
-                    color = MiuixTheme.colorScheme.onBackgroundVariant
-                )
-            }
-        } else {
-            items(profile.points, key = { it.id }) { point ->
-                Card(
-                    modifier = Modifier.fillMaxWidth(),
-                cornerRadius = 20.dp,
-                colors = CardDefaults.defaultColors(
-                    color = cardContainerColor,
-                    contentColor = MiuixTheme.colorScheme.onSurfaceContainer
-                )
-            ) {
-                    Column(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(14.dp),
-                        verticalArrangement = Arrangement.spacedBy(6.dp)
-                    ) {
-                        Text("动作 #${point.id}", fontWeight = FontWeight.SemiBold)
-                        Text(
-                            text = "动作类型：${point.actionType.displayName}",
-                            color = MiuixTheme.colorScheme.onBackgroundVariant
-                        )
-                        if (point.actionType.usesScreenCoordinates) {
-                            Text(
-                                text = "中心坐标：(${point.x}, ${point.y})",
-                                color = MiuixTheme.colorScheme.onBackgroundVariant
-                            )
-                        }
-                        Text(
-                            text = if (point.actionType.usesTouchDuration) {
-                                "延迟/触摸/重复：${point.delayMs}ms / ${point.touchDurationMs}ms / ${point.repeatCount}"
-                            } else {
-                                "延迟/重复：${point.delayMs}ms / ${point.repeatCount}"
-                            },
-                            color = MiuixTheme.colorScheme.onBackgroundVariant
-                        )
-                        if (point.actionType == AutoClickActionType.Swipe) {
-                            Text(
-                                text = "滑动终点：(${point.endX ?: point.x + 200}, ${point.endY ?: point.y})",
-                                color = MiuixTheme.colorScheme.onBackgroundVariant
-                            )
-                        }
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.spacedBy(10.dp)
-                        ) {
-                            Button(
-                                onClick = { showPointEditDialog(context, point) },
-                                modifier = Modifier.weight(1f)
-                            ) {
-                                Text("编辑动作")
-                            }
-                            Button(
-                                onClick = {
-                                    AutoClickCoordinator.removePoint(point.id)
-                                    Toast.makeText(context, "已删除动作 #${point.id}", Toast.LENGTH_SHORT).show()
-                                },
-                                modifier = Modifier.weight(1f)
-                            ) {
-                                Text("删除动作")
-                            }
-                        }
-                    }
-                }
-            }
         }
 
         item {
@@ -531,7 +441,7 @@ private fun TimerCard(
     scheduleRuleHms: String?,
     timerOverlayEnabled: Boolean,
     onPickTime: () -> Unit,
-    onToggleTimerOverlay: () -> Unit,
+    onToggleTimerOverlay: (Boolean) -> Unit,
     onConfigNtp: () -> Unit,
     isDarkTheme: Boolean,
     cardContainerColor: Color,
@@ -592,13 +502,26 @@ private fun TimerCard(
             ) {
                 Text("选择时间")
             }
-            Button(
-                onClick = onToggleTimerOverlay,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .heightIn(min = 56.dp)
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
             ) {
-                Text(if (timerOverlayEnabled) "关闭定时悬浮窗" else "开启定时悬浮窗")
+                Column(
+                    modifier = Modifier.weight(1f),
+                    verticalArrangement = Arrangement.spacedBy(2.dp)
+                ) {
+                    Text("定时悬浮窗开关", fontWeight = FontWeight.SemiBold)
+                    Text(
+                        text = "显示当前时间与设定时间",
+                        color = MiuixTheme.colorScheme.onBackgroundVariant
+                    )
+                }
+                Spacer(modifier = Modifier.width(10.dp))
+                Switch(
+                    checked = timerOverlayEnabled,
+                    onCheckedChange = { shouldEnable -> onToggleTimerOverlay(shouldEnable) }
+                )
             }
             Button(
                 onClick = onConfigNtp,
@@ -725,166 +648,6 @@ private fun showHmsPickerDialog(
         .show()
 }
 
-private fun showPointEditDialog(
-    context: Context,
-    point: AutoClickPoint,
-) {
-    val latestPoint = AutoClickCoordinator.profile.value.points.firstOrNull { it.id == point.id } ?: point
-    val xInput = createNumberInput(context, latestPoint.x)
-    val yInput = createNumberInput(context, latestPoint.y)
-    val endXInput = createNumberInput(context, latestPoint.endX ?: (latestPoint.x + 200))
-    val endYInput = createNumberInput(context, latestPoint.endY ?: latestPoint.y)
-    val delayInput = createNumberInput(context, latestPoint.delayMs.toInt())
-    val touchInput = createNumberInput(context, latestPoint.touchDurationMs.toInt())
-    val repeatInput = createNumberInput(context, latestPoint.repeatCount)
-    val isSwipeAction = latestPoint.actionType == AutoClickActionType.Swipe
-    val usesScreenCoordinates = latestPoint.actionType.usesScreenCoordinates
-    val usesTouchDuration = latestPoint.actionType.usesTouchDuration
-
-    val container = LinearLayout(context).apply {
-        orientation = LinearLayout.VERTICAL
-        setPadding(40, 30, 40, 10)
-        addView(buildField(context, "动作类型", createReadOnlyInput(context, latestPoint.actionType.displayName)))
-        if (usesScreenCoordinates) {
-            addView(buildField(context, "X 中心坐标", xInput))
-            addView(buildField(context, "Y 中心坐标", yInput))
-        }
-        if (isSwipeAction) {
-            addView(buildField(context, "滑动结束X", endXInput))
-            addView(buildField(context, "滑动结束Y", endYInput))
-        }
-        addView(buildField(context, "点击延迟(ms)", delayInput))
-        if (usesTouchDuration) {
-            addView(buildField(context, "触摸时长(ms)", touchInput))
-        }
-        addView(buildField(context, "重复次数", repeatInput))
-    }
-    val scrollContainer = ScrollView(context).apply {
-        isFillViewport = true
-        addView(container)
-    }
-
-    AlertDialog.Builder(context)
-        .setTitle("编辑动作 #${point.id}")
-        .setView(scrollContainer)
-        .setNegativeButton("取消", null)
-        .setPositiveButton("保存") { _, _ ->
-            val currentPoint = AutoClickCoordinator.profile.value.points.firstOrNull { it.id == point.id } ?: point
-            val actionType = currentPoint.actionType
-            val safeX = if (actionType.usesScreenCoordinates) {
-                xInput.text.toString().toIntOrNull()?.coerceAtLeast(0) ?: currentPoint.x
-            } else {
-                currentPoint.x
-            }
-            val safeY = if (actionType.usesScreenCoordinates) {
-                yInput.text.toString().toIntOrNull()?.coerceAtLeast(0) ?: currentPoint.y
-            } else {
-                currentPoint.y
-            }
-            val endX = if (actionType == AutoClickActionType.Swipe) {
-                endXInput.text.toString().toIntOrNull()
-            } else {
-                null
-            }
-            val endY = if (actionType == AutoClickActionType.Swipe) {
-                endYInput.text.toString().toIntOrNull()
-            } else {
-                null
-            }
-            val safeEndX = if (actionType == AutoClickActionType.Swipe) {
-                (endX ?: currentPoint.endX ?: (safeX + 200)).coerceAtLeast(0)
-            } else {
-                null
-            }
-            val safeEndY = if (actionType == AutoClickActionType.Swipe) {
-                (endY ?: currentPoint.endY ?: safeY).coerceAtLeast(0)
-            } else {
-                null
-            }
-
-            AutoClickCoordinator.updatePointConfig(
-                pointId = point.id,
-                x = safeX,
-                y = safeY,
-                actionType = actionType,
-                endX = safeEndX,
-                endY = safeEndY,
-                delayMs = xInputToLong(delayInput, currentPoint.delayMs, min = 0L),
-                touchDurationMs = if (actionType.usesTouchDuration) {
-                    xInputToLong(touchInput, currentPoint.touchDurationMs, min = 1L)
-                } else {
-                    currentPoint.touchDurationMs
-                },
-                repeatCount = repeatInput.text.toString().toIntOrNull()?.coerceAtLeast(1) ?: currentPoint.repeatCount
-            )
-            val saveResult = AutoClickCoordinator.saveProfile()
-            val tip = if (saveResult.isSuccess) {
-                "动作 #${point.id} 已更新并自动保存"
-            } else {
-                "动作 #${point.id} 已更新，自动保存失败：${saveResult.exceptionOrNull()?.message ?: "未知错误"}"
-            }
-            Toast.makeText(context, tip, Toast.LENGTH_SHORT).show()
-        }
-        .show()
-}
-
-private fun showAddActionDialog(context: Context) {
-    val labels = arrayOf("点击", "滑动", "Home", "Back", "多任务")
-    AlertDialog.Builder(context)
-        .setTitle("添加动作")
-        .setItems(labels) { _, which ->
-            val type = when (which) {
-                1 -> AutoClickActionType.Swipe
-                2 -> AutoClickActionType.Home
-                3 -> AutoClickActionType.Back
-                4 -> AutoClickActionType.Recents
-                else -> AutoClickActionType.Click
-            }
-            val point = AutoClickCoordinator.addAction(type)
-            Toast.makeText(context, "已添加：${type.displayName} #${point.id}", Toast.LENGTH_SHORT).show()
-        }
-        .setNegativeButton("取消", null)
-        .show()
-}
-
-private fun xInputToLong(input: EditText, fallback: Long, min: Long): Long {
-    return input.text.toString().toLongOrNull()?.coerceAtLeast(min) ?: fallback
-}
-
-private fun buildField(context: Context, title: String, input: EditText): LinearLayout {
-    val titleView = EditText(context).apply {
-        setText(title)
-        isEnabled = false
-        setTextColor(0xFF455A64.toInt())
-        background = null
-        isFocusable = false
-        isClickable = false
-    }
-    return LinearLayout(context).apply {
-        orientation = LinearLayout.VERTICAL
-        addView(titleView)
-        addView(input)
-    }
-}
-
-private fun createNumberInput(context: Context, defaultValue: Int): EditText {
-    return EditText(context).apply {
-        inputType = InputType.TYPE_CLASS_NUMBER
-        setText(defaultValue.toString())
-    }
-}
-
-private fun createReadOnlyInput(context: Context, value: String): EditText {
-    return EditText(context).apply {
-        setText(value)
-        isEnabled = false
-        setTextColor(0xFF455A64.toInt())
-        background = null
-        isFocusable = false
-        isClickable = false
-    }
-}
-
 private fun Context.loadRandomAutoClickTip(): String {
     val fallback = "本软件永久免费，欢迎使用。"
     return runCatching {
@@ -898,6 +661,47 @@ private fun Context.loadRandomAutoClickTip(): String {
         .takeIf { it.isNotEmpty() }
         ?.let { tips -> tips[Random.nextInt(tips.size)] }
         ?: fallback
+}
+
+@Composable
+private fun PermissionStatusSummaryCard(
+    allReady: Boolean,
+    isDarkTheme: Boolean,
+) {
+    val successBg = if (isDarkTheme) Color(0xFF1C3327) else Color(0xFFE9F8EE)
+    val errorBg = if (isDarkTheme) Color(0xFF3A2023) else Color(0xFFFDEBEC)
+    val successTint = if (isDarkTheme) Color(0xFF90E3B3) else Color(0xFF1F8B4C)
+    val errorTint = if (isDarkTheme) Color(0xFFFFA7A7) else Color(0xFFC62828)
+    val message = if (allReady) "权限已就绪，准备开始点击" else "权限未就绪，请先完成授权"
+
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        cornerRadius = 20.dp,
+        colors = CardDefaults.defaultColors(
+            color = if (allReady) successBg else errorBg,
+            contentColor = MiuixTheme.colorScheme.onSurfaceContainer
+        ),
+        insideMargin = PaddingValues(0.dp)
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 14.dp, vertical = 10.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            Icon(
+                imageVector = if (allReady) Icons.Filled.CheckCircle else Icons.Filled.ErrorOutline,
+                contentDescription = if (allReady) "成功" else "错误",
+                tint = if (allReady) successTint else errorTint
+            )
+            SmallTitle(
+                text = message,
+                insideMargin = PaddingValues(0.dp),
+                textColor = if (allReady) successTint else errorTint
+            )
+        }
+    }
 }
 
 @Composable

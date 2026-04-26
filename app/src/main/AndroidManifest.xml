@@ -35,6 +35,9 @@
         <activity
             android:name=".ConfigManageActivity"
             android:exported="false" />
+        <activity
+            android:name=".ActionManageActivity"
+            android:exported="false" />
 
         <service
             android:name=".service.AutoClickAccessibilityService"

@@ -1,6 +1,6 @@
 # LittleClicker 实现记录
 
-最后更新：2026-04-05
+最后更新：2026-04-26
 
 ## 2026-04-05（自动点击支持三大金刚键：Home/Back/多任务）
 - 需求实现：
@@ -952,3 +952,28 @@
     - 新增互斥回归：`startRecording_whenExecutionRunning_returnsFalse`。
 - 验证结果：
   - `./gradlew :app:compileDebugKotlin :app:testDebugUnitTest --no-daemon` 通过。
+
+## 2026-04-26（权限状态改为 SmallTitle + 定时悬浮窗 Switch + 动作管理迁移子页面）
+- 需求实现：
+  - “权限设置”区域改为 miuix `SmallTitle` 风格状态条，左侧显示成功/错误图标；
+  - “定时悬浮窗开关”由按钮改为 `Switch` 控件；
+  - “动作管理”迁移到新子页面，首页仅保留入口，且入口位于“动作悬浮窗开关”下方；
+  - 子页面中动作项操作改为图标按钮：左侧编辑图标、右侧红色删除图标。
+- 修复内容：
+  - `AutoClickScreen`：
+    - 新增权限状态汇总卡 `PermissionStatusSummaryCard`，使用 `SmallTitle + Icon` 显示“权限已就绪/未就绪”，并按状态应用浅绿色/浅红色背景；
+    - 删除原有“权限设置”标题和“权限已就绪，准备开始点击”普通文本展示；
+    - 在“点击配置”中将“动作管理”入口放置到“动作悬浮窗开关”正下方；
+    - 移除首页内联动作列表、编辑与删除按钮逻辑。
+  - `TimerCard`：
+    - 将“定时悬浮窗开关”改为 miuix `Switch` 行内控制，保留原权限校验与开启/关闭逻辑。
+  - 新增页面与路由：
+    - 新增 `ActionManageActivity` 与 `ActionManageScreen`；
+    - 在 `AndroidManifest.xml` 注册 `ActionManageActivity`；
+    - `ActionManageScreen` 承接“添加动作 / 编辑动作 / 删除动作”能力，动作卡片右上角采用编辑图标 + 红色删除图标。
+- 验证结果：
+  - `./gradlew :app:compileDebugKotlin` 通过。
+  - `./gradlew :app:testDebugUnitTest` 通过。
+  - `./gradlew :app:assembleDebug --no-daemon` 通过。
+  - `adb install -r app/build/outputs/apk/debug/app-debug.apk` 安装成功。
+  - `adb logcat -c` 后执行 `adb shell monkey -p com.example.littleclicker -c android.intent.category.LAUNCHER 1` 可正常拉起应用；日志中未检出 LittleClicker 进程崩溃。
