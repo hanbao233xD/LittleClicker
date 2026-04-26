@@ -803,6 +803,7 @@ class FloatingWindowService : LifecycleService() {
             .setTitle("编辑动作 #${point.id}")
             .setView(scrollContainer)
             .setNegativeButton("取消", null)
+            .setNeutralButton("删除动作", null)
             .setPositiveButton("保存") { _, _ ->
                 val currentPoint = AutoClickCoordinator.profile.value.points
                     .firstOrNull { it.id == point.id }
@@ -863,12 +864,36 @@ class FloatingWindowService : LifecycleService() {
             }
             .create()
 
+        var pendingDeleteConfirm = false
+
         lowerOverlaysForPointEditDialog()
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             dialog.window?.setType(WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY)
         } else {
             @Suppress("DEPRECATION")
             dialog.window?.setType(WindowManager.LayoutParams.TYPE_PHONE)
+        }
+
+        dialog.setOnShowListener {
+            val deleteButton = dialog.getButton(AlertDialog.BUTTON_NEUTRAL) ?: return@setOnShowListener
+            deleteButton.setOnClickListener {
+                if (!pendingDeleteConfirm) {
+                    pendingDeleteConfirm = true
+                    deleteButton.text = "再次点击删除"
+                    Toast.makeText(this, "再次点击删除动作 #${point.id}", Toast.LENGTH_SHORT).show()
+                    return@setOnClickListener
+                }
+
+                AutoClickCoordinator.removePoint(point.id)
+                val saveResult = AutoClickCoordinator.saveProfile()
+                val tip = if (saveResult.isSuccess) {
+                    "已删除动作 #${point.id}"
+                } else {
+                    "已删除动作 #${point.id}，自动保存失败：${saveResult.exceptionOrNull()?.message ?: "未知错误"}"
+                }
+                Toast.makeText(this, tip, Toast.LENGTH_SHORT).show()
+                dialog.dismiss()
+            }
         }
 
         dialog.setOnDismissListener {

@@ -322,7 +322,7 @@ internal fun AutoClickScreen(
                             items = recordModeItems,
                             selectedIndex = selectedRecordModeIndex,
                             title = "录制方式",
-                            summary = "互斥策略：录制期间禁止执行脚本",
+                            summary = "穿透模式下：录制一步，自动模拟一步",
                             onSelectedIndexChange = { index ->
                                 val mode = if (index == 0) {
                                     AutoClickRecordingMode.RecordOnly

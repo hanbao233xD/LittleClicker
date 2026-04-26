@@ -1021,3 +1021,19 @@
   - `./gradlew :app:assembleDebug --no-daemon` 通过。
   - `adb install -r app/build/outputs/apk/debug/app-debug.apk` 安装成功。
   - `adb logcat -c` 后执行 `adb shell monkey -p com.example.littleclicker -c android.intent.category.LAUNCHER 1` 可正常拉起应用；未检出 LittleClicker 崩溃日志。
+
+## 2026-04-26（悬浮窗编辑面板新增“删除动作”二次确认）
+- 需求实现：
+  - 长按点击位置唤起编辑面板后，在面板左下角新增“删除动作”按钮；
+  - 删除操作增加二次确认：首次点击后按钮文案改为“再次点击删除”，再次点击才真正删除。
+- 修复内容：
+  - `FloatingWindowService.showPointEditDialog(...)`：
+    - 编辑弹窗新增 `NeutralButton("删除动作")`；
+    - 在 `setOnShowListener` 中接管删除按钮点击事件：
+      - 第一次点击：切换文案为“再次点击删除”，并 toast 提示；
+      - 第二次点击：执行 `removePoint(point.id)`，随后 `saveProfile()`，并 toast 结果后关闭弹窗。
+- 验证结果：
+  - `./gradlew :app:compileDebugKotlin :app:testDebugUnitTest --no-daemon` 通过。
+  - `./gradlew :app:assembleDebug --no-daemon` 通过。
+  - `adb install -r app/build/outputs/apk/debug/app-debug.apk` 安装成功。
+  - `adb logcat -c` 后执行 `adb shell monkey -p com.example.littleclicker -c android.intent.category.LAUNCHER 1` 可正常拉起应用；未检出 LittleClicker 崩溃日志。
