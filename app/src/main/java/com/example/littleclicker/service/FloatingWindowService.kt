@@ -94,7 +94,6 @@ import androidx.savedstate.setViewTreeSavedStateRegistryOwner
 import com.example.littleclicker.autoclick.AutoClickCoordinator
 import com.example.littleclicker.autoclick.AutoClickActionType
 import com.example.littleclicker.autoclick.AutoClickPoint
-import com.example.littleclicker.autoclick.AutoClickRecordingMode
 import com.example.littleclicker.autoclick.AutoClickRunState
 import com.example.littleclicker.autoclick.displayName
 import com.example.littleclicker.autoclick.usesScreenCoordinates
@@ -241,6 +240,14 @@ class FloatingWindowService : LifecycleService() {
                             updatePanelOffset(desired)
                         },
                         onToggleRun = {
+                            if (recording.isRecording) {
+                                Toast.makeText(
+                                    this@FloatingWindowService,
+                                    "录制中禁止执行脚本",
+                                    Toast.LENGTH_SHORT
+                                ).show()
+                                return@FloatingPanel
+                            }
                             val changed = when (runtime.state) {
                                 AutoClickRunState.Running, AutoClickRunState.Paused -> AutoClickCoordinator.stop()
                                 else -> AutoClickCoordinator.startNow()
@@ -254,6 +261,16 @@ class FloatingWindowService : LifecycleService() {
                             }
                         },
                         onToggleRecord = {
+                            if (!recording.isRecording &&
+                                (runtime.state == AutoClickRunState.Running || runtime.state == AutoClickRunState.Paused)
+                            ) {
+                                Toast.makeText(
+                                    this@FloatingWindowService,
+                                    "执行中禁止启动录制",
+                                    Toast.LENGTH_SHORT
+                                ).show()
+                                return@FloatingPanel
+                            }
                             val changed = if (recording.isRecording) {
                                 AutoClickCoordinator.stopRecording()
                             } else {
@@ -1000,31 +1017,7 @@ class FloatingWindowService : LifecycleService() {
                                         "已录制 $count.${recorded.actionType.displayName}",
                                         Toast.LENGTH_SHORT
                                     ).show()
-                                    if (AutoClickCoordinator.profile.value.recordingMode == AutoClickRecordingMode.RecordAndPassThrough) {
-                                        val replayDelayMs = when (recorded.actionType) {
-                                            AutoClickActionType.Click -> RECORDED_CLICK_REPLAY_DELAY_MS
-                                            AutoClickActionType.Swipe -> RECORDED_SWIPE_REPLAY_DELAY_MS
-                                            AutoClickActionType.Home -> RECORDED_CLICK_REPLAY_DELAY_MS
-                                            AutoClickActionType.Back -> RECORDED_CLICK_REPLAY_DELAY_MS
-                                            AutoClickActionType.Recents -> RECORDED_CLICK_REPLAY_DELAY_MS
-                                        }
-                                        val replayed = AutoClickAccessibilityService.replayRecordedAction(
-                                            point = recorded,
-                                            triggerDelayMs = replayDelayMs
-                                        )
-                                        if (replayed) {
-                                            armRecordReplayPassThroughWindow(
-                                                triggerDelayMs = replayDelayMs,
-                                                touchDurationMs = recorded.touchDurationMs
-                                            )
-                                        } else {
-                                            Toast.makeText(
-                                                this@FloatingWindowService,
-                                                "动作已录制，自动模拟失败（请检查无障碍）",
-                                                Toast.LENGTH_SHORT
-                                            ).show()
-                                        }
-                                    }
+                                    // 互斥策略：录制期间禁止任何脚本执行，不触发穿透回放。
                                 }
                             }
                         }

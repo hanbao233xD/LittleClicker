@@ -143,4 +143,32 @@ class AutoClickSerializationTest {
         assertEquals(AutoClickRunState.Scheduled, AutoClickCoordinator.runtime.value.state)
         AutoClickCoordinator.clearScheduleTime()
     }
+
+    @Test
+    fun startNow_whenRecordingActive_returnsFalse() {
+        AutoClickCoordinator.reportExecutionState(AutoClickRunState.Idle, "test reset")
+        AutoClickCoordinator.stopRecording()
+        val startedRecording = AutoClickCoordinator.startRecording()
+        assertTrue(startedRecording)
+
+        val startedExecution = AutoClickCoordinator.startNow()
+
+        assertFalse(startedExecution)
+        assertEquals(AutoClickRunState.Failed, AutoClickCoordinator.runtime.value.state)
+        assertEquals("录制中，禁止执行脚本", AutoClickCoordinator.runtime.value.message)
+        AutoClickCoordinator.stopRecording()
+    }
+
+    @Test
+    fun startRecording_whenExecutionRunning_returnsFalse() {
+        AutoClickCoordinator.stopRecording()
+        AutoClickCoordinator.reportExecutionState(AutoClickRunState.Running, "test running")
+
+        val startedRecording = AutoClickCoordinator.startRecording()
+
+        assertFalse(startedRecording)
+        assertEquals(AutoClickRunState.Failed, AutoClickCoordinator.runtime.value.state)
+        assertEquals("执行中不可录制，请先停止", AutoClickCoordinator.runtime.value.message)
+        AutoClickCoordinator.reportExecutionState(AutoClickRunState.Idle, "test reset")
+    }
 }

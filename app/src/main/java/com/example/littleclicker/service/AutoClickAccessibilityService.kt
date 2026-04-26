@@ -188,6 +188,10 @@ class AutoClickAccessibilityService : AccessibilityService() {
         return true
     }
 
+    private fun hasActiveRunner(): Boolean {
+        return synchronized(lock) { runnerJob?.isActive == true }
+    }
+
     private suspend fun executeProfile(profile: AutoClickProfile) {
         if (profile.points.isEmpty()) {
             throw IllegalStateException("没有可执行的点击步骤")
@@ -315,6 +319,9 @@ class AutoClickAccessibilityService : AccessibilityService() {
     }
 
     private fun replayRecordedAction(point: AutoClickPoint, triggerDelayMs: Long): Boolean {
+        if (AutoClickCoordinator.recording.value.isRecording) {
+            return false
+        }
         val canReplay = synchronized(lock) { runnerJob?.isActive != true }
         if (!canReplay) return false
         serviceScope.launch {
@@ -516,6 +523,8 @@ class AutoClickAccessibilityService : AccessibilityService() {
         private var instance: AutoClickAccessibilityService? = null
 
         fun isConnected(): Boolean = instance != null
+
+        fun isExecuting(): Boolean = instance?.hasActiveRunner() == true
 
         fun addOverlayView(view: View, params: WindowManager.LayoutParams): Boolean {
             return instance?.addOverlayViewInternal(view, params) ?: false

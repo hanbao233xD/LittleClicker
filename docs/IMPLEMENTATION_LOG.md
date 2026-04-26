@@ -929,3 +929,26 @@
     - `AutoClickSerializationTest` 增加 `layoutLocked` 序列化回归断言与旧配置默认值断言。
 - 验证结果：
   - `./gradlew :app:compileDebugKotlin :app:testDebugUnitTest --no-daemon` 通过。
+
+## 2026-04-26（录制/执行互斥管控强化）
+- 需求实现：
+  - 录制脚本时禁止执行脚本；
+  - 自动点击/脚本执行时全程禁止启动录制。
+- 修复内容：
+  - `AutoClickCoordinator`：
+    - `startNow(...)` 在录制中返回失败并给出明确提示“录制中，禁止执行脚本”；
+    - `startRecording()` 在运行中或执行器活跃时返回失败并提示“执行中不可录制，请先停止”。
+  - `AutoClickAccessibilityService`：
+    - 新增 `isExecuting()`，用于外部判断执行器是否仍在运行；
+    - `replayRecordedAction(...)` 增加录制态硬拦截，录制中不允许触发执行。
+  - `FloatingWindowService`：
+    - 运行按钮在录制中直接拦截并提示“录制中禁止执行脚本”；
+    - 录制按钮在执行中直接拦截并提示“执行中禁止启动录制”；
+    - 移除录制时“穿透回放”执行链路，避免录制期间触发任何脚本执行。
+  - `AutoClickScreen`：
+    - 录制方式文案调整为互斥说明，避免误导。
+  - 单测：
+    - 新增互斥回归：`startNow_whenRecordingActive_returnsFalse`；
+    - 新增互斥回归：`startRecording_whenExecutionRunning_returnsFalse`。
+- 验证结果：
+  - `./gradlew :app:compileDebugKotlin :app:testDebugUnitTest --no-daemon` 通过。

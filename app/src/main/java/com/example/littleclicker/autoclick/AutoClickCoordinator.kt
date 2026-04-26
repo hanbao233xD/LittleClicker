@@ -322,10 +322,13 @@ object AutoClickCoordinator {
 
     fun startRecording(): Boolean {
         if (_recording.value.isRecording) return false
-        if (_runtime.value.state == AutoClickRunState.Running || _runtime.value.state == AutoClickRunState.Paused) {
+        if (_runtime.value.state == AutoClickRunState.Running ||
+            _runtime.value.state == AutoClickRunState.Paused ||
+            AutoClickAccessibilityService.isExecuting()
+        ) {
             _runtime.value = AutoClickRuntime(
                 state = AutoClickRunState.Failed,
-                message = "运行中不可录制，请先停止"
+                message = "执行中不可录制，请先停止"
             )
             return false
         }
@@ -637,7 +640,7 @@ object AutoClickCoordinator {
         if (_recording.value.isRecording) {
             _runtime.value = AutoClickRuntime(
                 state = AutoClickRunState.Failed,
-                message = "录制中，无法开始运行"
+                message = "录制中，禁止执行脚本"
             )
             return false
         }
