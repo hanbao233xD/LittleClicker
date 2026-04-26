@@ -16,6 +16,11 @@ import kotlinx.coroutines.launch
 import java.util.Calendar
 import java.util.Locale
 
+data class ScheduleAtHmsResult(
+    val scheduledAtMillis: Long,
+    val rolledToNextDay: Boolean,
+)
+
 object AutoClickCoordinator {
 
     private const val AUTO_NAME_PREFIX = "点击配置_"
@@ -572,7 +577,7 @@ object AutoClickCoordinator {
         )
     }
 
-    fun scheduleAtHms(hour: Int, minute: Int, second: Int): Boolean {
+    fun scheduleAtHms(hour: Int, minute: Int, second: Int): ScheduleAtHmsResult {
         syncNtpTime(force = true)
 
         val safeHour = hour.coerceIn(0, 23)
@@ -580,28 +585,20 @@ object AutoClickCoordinator {
         val safeSecond = second.coerceIn(0, 59)
         val rule = formatHms(safeHour, safeMinute, safeSecond)
         val now = currentAlignedNowMillis()
-        val target = Calendar.getInstance().apply {
+        val targetCalendar = Calendar.getInstance().apply {
             timeInMillis = now
             set(Calendar.HOUR_OF_DAY, safeHour)
             set(Calendar.MINUTE, safeMinute)
             set(Calendar.SECOND, safeSecond)
             set(Calendar.MILLISECOND, 0)
-        }.timeInMillis
-
-        if (target <= now) {
-            updateProfile { current ->
-                current.copy(
-                    scheduleRuleHms = rule,
-                    startAtMillis = null
-                )
-            }
-            _runtime.value = AutoClickRuntime(
-                state = AutoClickRunState.Failed,
-                message = "设定时间已过期，请重新设置",
-                scheduledAtMillis = target
-            )
-            return false
         }
+        val rolledToNextDay = if (targetCalendar.timeInMillis <= now) {
+            targetCalendar.add(Calendar.DAY_OF_YEAR, 1)
+            true
+        } else {
+            false
+        }
+        val target = targetCalendar.timeInMillis
 
         updateProfile { current ->
             current.copy(
@@ -610,7 +607,10 @@ object AutoClickCoordinator {
             )
         }
         armSchedule(target)
-        return true
+        return ScheduleAtHmsResult(
+            scheduledAtMillis = target,
+            rolledToNextDay = rolledToNextDay
+        )
     }
 
     fun scheduleAt(startAtMillis: Long): Boolean {

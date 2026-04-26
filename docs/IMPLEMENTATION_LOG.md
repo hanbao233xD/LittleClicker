@@ -977,3 +977,23 @@
   - `./gradlew :app:assembleDebug --no-daemon` 通过。
   - `adb install -r app/build/outputs/apk/debug/app-debug.apk` 安装成功。
   - `adb logcat -c` 后执行 `adb shell monkey -p com.example.littleclicker -c android.intent.category.LAUNCHER 1` 可正常拉起应用；日志中未检出 LittleClicker 进程崩溃。
+
+## 2026-04-26（定时任务支持跨天顺延）
+- 需求实现：
+  - 选择定时时间如果已过期，不再失败；改为自动顺延到第二天同一时刻，并弹出 toast 提示。
+- 修复内容：
+  - `AutoClickCoordinator`：
+    - 新增 `ScheduleAtHmsResult`（包含 `scheduledAtMillis`、`rolledToNextDay`）；
+    - `scheduleAtHms(...)` 返回结果对象；
+    - 当目标 `hh:mm:ss` 小于等于当前对齐时间时，自动 `+1` 天后再设定并进入 `Scheduled` 状态。
+  - `AutoClickScreen`：
+    - 定时选择回调改为使用 `ScheduleAtHmsResult`；
+    - 当 `rolledToNextDay=true` 时，toast 显示“设定时间已过期，已自动顺延到明天：HH:mm:ss”。
+  - 单测更新：
+    - `AutoClickSerializationTest.scheduleAtHms_whenPast_rollsToNextDay`：验证过期场景自动顺延到次日并成功进入 `Scheduled`；
+    - `scheduleAtHms_whenFuture_returnsTrue`：更新为断言 `rolledToNextDay=false` 且 `startAtMillis` 与结果一致。
+- 验证结果：
+  - `./gradlew :app:compileDebugKotlin :app:testDebugUnitTest --no-daemon` 通过。
+  - `./gradlew :app:assembleDebug --no-daemon` 通过。
+  - `adb install -r app/build/outputs/apk/debug/app-debug.apk` 安装成功。
+  - `adb logcat -c` 后执行 `adb shell monkey -p com.example.littleclicker -c android.intent.category.LAUNCHER 1` 可正常拉起应用；未检出 LittleClicker 崩溃日志。

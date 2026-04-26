@@ -84,22 +84,35 @@ class AutoClickSerializationTest {
     }
 
     @Test
-    fun scheduleAtHms_whenPast_returnsFalse() {
+    fun scheduleAtHms_whenPast_rollsToNextDay() {
+        val nowMillis = AutoClickCoordinator.currentAlignedNowMillis()
         val now = Calendar.getInstance().apply {
-            timeInMillis = AutoClickCoordinator.currentAlignedNowMillis()
+            timeInMillis = nowMillis
         }
         val hour = now.get(Calendar.HOUR_OF_DAY)
         val minute = now.get(Calendar.MINUTE)
         val second = now.get(Calendar.SECOND)
 
-        val success = AutoClickCoordinator.scheduleAtHms(hour, minute, second)
+        val result = AutoClickCoordinator.scheduleAtHms(hour, minute, second)
+        val expectedTarget = Calendar.getInstance().apply {
+            timeInMillis = nowMillis
+            set(Calendar.HOUR_OF_DAY, hour)
+            set(Calendar.MINUTE, minute)
+            set(Calendar.SECOND, second)
+            set(Calendar.MILLISECOND, 0)
+            if (timeInMillis <= nowMillis) {
+                add(Calendar.DAY_OF_YEAR, 1)
+            }
+        }.timeInMillis
 
-        assertFalse(success)
+        assertTrue(result.rolledToNextDay)
+        assertEquals(expectedTarget, result.scheduledAtMillis)
         assertEquals(
             String.format("%02d:%02d:%02d", hour, minute, second),
             AutoClickCoordinator.profile.value.scheduleRuleHms
         )
-        assertNull(AutoClickCoordinator.profile.value.startAtMillis)
+        assertEquals(expectedTarget, AutoClickCoordinator.profile.value.startAtMillis)
+        assertEquals(AutoClickRunState.Scheduled, AutoClickCoordinator.runtime.value.state)
         AutoClickCoordinator.clearScheduleTime()
     }
 
@@ -132,14 +145,15 @@ class AutoClickSerializationTest {
         }
         assertTrue(targetHour >= 0)
 
-        val success = AutoClickCoordinator.scheduleAtHms(targetHour, targetMinute, targetSecond)
+        val result = AutoClickCoordinator.scheduleAtHms(targetHour, targetMinute, targetSecond)
 
-        assertTrue(success)
+        assertFalse(result.rolledToNextDay)
         assertEquals(
             String.format("%02d:%02d:%02d", targetHour, targetMinute, targetSecond),
             AutoClickCoordinator.profile.value.scheduleRuleHms
         )
         assertNotNull(AutoClickCoordinator.profile.value.startAtMillis)
+        assertEquals(result.scheduledAtMillis, AutoClickCoordinator.profile.value.startAtMillis)
         assertEquals(AutoClickRunState.Scheduled, AutoClickCoordinator.runtime.value.state)
         AutoClickCoordinator.clearScheduleTime()
     }

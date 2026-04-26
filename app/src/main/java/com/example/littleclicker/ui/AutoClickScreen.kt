@@ -344,21 +344,22 @@ internal fun AutoClickScreen(
                         context = context,
                         initialMillis = nowAlignedMillis,
                         onSelected = { hour, minute, second ->
-                            val success = AutoClickCoordinator.scheduleAtHms(hour, minute, second)
-                            val tip = if (success) {
-                                val baseTip = "定时已设置：${String.format("%02d:%02d:%02d", hour, minute, second)}"
-                                if (!timerOverlayEnabled) {
-                                    if (ensureOverlayStartPermissions(context)) {
-                                        TimerFloatingWindowService.start(context)
-                                        "$baseTip，已自动开启定时悬浮窗"
-                                    } else {
-                                        "$baseTip，请先完成权限后再开启定时悬浮窗"
-                                    }
+                            val scheduleResult = AutoClickCoordinator.scheduleAtHms(hour, minute, second)
+                            val hmsLabel = String.format("%02d:%02d:%02d", hour, minute, second)
+                            val baseTip = if (scheduleResult.rolledToNextDay) {
+                                "设定时间已过期，已自动顺延到明天：$hmsLabel"
+                            } else {
+                                "定时已设置：$hmsLabel"
+                            }
+                            val tip = if (!timerOverlayEnabled) {
+                                if (ensureOverlayStartPermissions(context)) {
+                                    TimerFloatingWindowService.start(context)
+                                    "$baseTip，已自动开启定时悬浮窗"
                                 } else {
-                                    "$baseTip，定时悬浮窗已开启"
+                                    "$baseTip，请先完成权限后再开启定时悬浮窗"
                                 }
                             } else {
-                                "设定时间已过期，请重新设置"
+                                "$baseTip，定时悬浮窗已开启"
                             }
                             Toast.makeText(context, tip, Toast.LENGTH_SHORT).show()
                         }
