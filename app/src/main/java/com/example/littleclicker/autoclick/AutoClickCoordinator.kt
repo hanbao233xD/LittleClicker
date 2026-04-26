@@ -480,6 +480,12 @@ object AutoClickCoordinator {
         }
     }
 
+    fun updateClickRandomOffsetPx(clickRandomOffsetPx: Int) {
+        updateProfile { current ->
+            current.copy(clickRandomOffsetPx = clickRandomOffsetPx.coerceAtLeast(0))
+        }
+    }
+
     fun updateRecordingMode(recordingMode: AutoClickRecordingMode) {
         updateProfile { current ->
             current.copy(recordingMode = recordingMode)
@@ -844,6 +850,7 @@ object AutoClickCoordinator {
             updated.copy(
                 cycleCount = updated.cycleCount.coerceAtLeast(1),
                 loopIntervalDelayMs = updated.loopIntervalDelayMs.coerceAtLeast(0L),
+                clickRandomOffsetPx = updated.clickRandomOffsetPx.coerceAtLeast(0),
                 ntpServerHost = updated.ntpServerHost.ifBlank { DEFAULT_NTP_SERVER_HOST },
                 scheduleRuleHms = normalizeScheduleRuleHms(updated.scheduleRuleHms),
                 points = updated.points.map { point ->

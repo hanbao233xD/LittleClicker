@@ -886,3 +886,24 @@
   - 当系统取图失败时，再回退到 `R.mipmap.ic_launcher`。
 - 验证结果：
   - `./gradlew :app:compileDebugKotlin --no-daemon` 通过。
+
+## 2026-04-26（自动点击增加随机位置偏移，用于反检测）
+- 需求实现：
+  - 自动点击执行时，增加点击坐标随机偏移，降低固定轨迹检测风险。
+- 修复内容：
+  - 数据模型与存储：
+    - `AutoClickProfile` 新增 `clickRandomOffsetPx` 字段，默认 `6px`；
+    - `AutoClickRepository` 增加 `clickRandomOffsetPx` 的 JSON 读写与旧配置兼容默认值回填。
+  - 业务逻辑：
+    - `AutoClickCoordinator` 新增 `updateClickRandomOffsetPx(...)`，并在配置归一化阶段保证值不为负数。
+  - 执行层（无障碍）：
+    - `AutoClickAccessibilityService` 在 `Click` 动作下发前，按 `[-offset, +offset]` 为 X/Y 各自随机扰动；
+    - 随机后坐标会按当前屏幕分辨率边界做裁剪，避免越界；
+    - `Swipe/Home/Back/多任务` 动作保持原行为不变。
+  - 配置管理 UI（miuix）：
+    - 在“当前配置编辑”新增 `点击随机偏移(px)` 输入框；
+    - 支持数字输入，`0` 表示关闭随机偏移。
+  - 单测：
+    - `AutoClickSerializationTest` 增补 `clickRandomOffsetPx` 的序列化回归与旧配置默认值断言。
+- 验证结果：
+  - `./gradlew :app:compileDebugKotlin :app:testDebugUnitTest --no-daemon` 通过。

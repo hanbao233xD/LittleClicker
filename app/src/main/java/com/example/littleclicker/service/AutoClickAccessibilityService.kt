@@ -32,6 +32,7 @@ import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlin.coroutines.resume
+import kotlin.random.Random
 
 class AutoClickAccessibilityService : AccessibilityService() {
 
@@ -200,11 +201,17 @@ class AutoClickAccessibilityService : AccessibilityService() {
 
         when (profile.runMode) {
             AutoClickRunMode.RunOnce -> {
-                executePointSequence(profile.points)
+                executePointSequence(
+                    points = profile.points,
+                    clickRandomOffsetPx = profile.clickRandomOffsetPx
+                )
             }
             AutoClickRunMode.LoopUntilStopped -> {
                 while (currentCoroutineContext().isActive) {
-                    executePointSequence(profile.points)
+                    executePointSequence(
+                        points = profile.points,
+                        clickRandomOffsetPx = profile.clickRandomOffsetPx
+                    )
                     ensureNotCancelled()
                     waitIfPaused()
                     val loopDelayMs = profile.loopIntervalDelayMs.coerceAtLeast(0L)
@@ -216,7 +223,10 @@ class AutoClickAccessibilityService : AccessibilityService() {
         }
     }
 
-    private suspend fun executePointSequence(points: List<AutoClickPoint>) {
+    private suspend fun executePointSequence(
+        points: List<AutoClickPoint>,
+        clickRandomOffsetPx: Int,
+    ) {
         for (point in points) {
             val safeRepeatCount = point.repeatCount.coerceAtLeast(1)
             repeat(safeRepeatCount) {
@@ -231,7 +241,10 @@ class AutoClickAccessibilityService : AccessibilityService() {
                 ensureNotCancelled()
                 waitIfPaused()
 
-                val dispatchResult = dispatchPoint(point)
+                val dispatchResult = dispatchPoint(
+                    point = point,
+                    clickRandomOffsetPx = clickRandomOffsetPx
+                )
                 when (dispatchResult) {
                     GestureDispatchResult.Completed -> Unit
                     GestureDispatchResult.Cancelled -> {
@@ -252,14 +265,22 @@ class AutoClickAccessibilityService : AccessibilityService() {
         }
     }
 
-    private suspend fun dispatchPoint(point: AutoClickPoint): GestureDispatchResult {
+    private suspend fun dispatchPoint(
+        point: AutoClickPoint,
+        clickRandomOffsetPx: Int = 0,
+    ): GestureDispatchResult {
         return when (point.actionType) {
             AutoClickActionType.Click -> {
                 val tapX = AutoClickCoordinator.toScreenCoordinateX(point.x)
                 val tapY = AutoClickCoordinator.toScreenCoordinateY(point.y)
-                dispatchSingleTap(
+                val offsetTap = applyRandomClickOffset(
                     x = tapX,
                     y = tapY,
+                    randomOffsetPx = clickRandomOffsetPx
+                )
+                dispatchSingleTap(
+                    x = offsetTap.first,
+                    y = offsetTap.second,
                     durationMs = point.touchDurationMs.coerceAtLeast(1L)
                 )
             }
@@ -298,9 +319,27 @@ class AutoClickAccessibilityService : AccessibilityService() {
         if (!canReplay) return false
         serviceScope.launch {
             delay(triggerDelayMs.coerceAtLeast(0L))
-            dispatchPoint(point)
+            val randomOffsetPx = AutoClickCoordinator.profile.value.clickRandomOffsetPx
+            dispatchPoint(point = point, clickRandomOffsetPx = randomOffsetPx)
         }
         return true
+    }
+
+    private fun applyRandomClickOffset(
+        x: Int,
+        y: Int,
+        randomOffsetPx: Int,
+    ): Pair<Int, Int> {
+        val safeOffset = randomOffsetPx.coerceAtLeast(0)
+        if (safeOffset <= 0) return x to y
+
+        val dx = Random.nextInt(from = -safeOffset, until = safeOffset + 1)
+        val dy = Random.nextInt(from = -safeOffset, until = safeOffset + 1)
+        val width = resources.displayMetrics.widthPixels.coerceAtLeast(1)
+        val height = resources.displayMetrics.heightPixels.coerceAtLeast(1)
+        val boundedX = (x + dx).coerceIn(0, width - 1)
+        val boundedY = (y + dy).coerceIn(0, height - 1)
+        return boundedX to boundedY
     }
 
     private suspend fun waitIfPaused() {

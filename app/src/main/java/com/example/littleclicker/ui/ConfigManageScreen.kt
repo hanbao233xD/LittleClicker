@@ -79,6 +79,9 @@ internal fun ConfigManageScreen(onBack: () -> Unit) {
     var loopIntervalDelayInput by remember(profile.loopIntervalDelayMs, profile.runMode) {
         mutableStateOf(profile.loopIntervalDelayMs.toString())
     }
+    var clickRandomOffsetInput by remember(profile.clickRandomOffsetPx) {
+        mutableStateOf(profile.clickRandomOffsetPx.toString())
+    }
     var editingProfileId by remember { mutableStateOf<String?>(null) }
     var editingProfileName by remember { mutableStateOf("") }
 
@@ -191,6 +194,24 @@ internal fun ConfigManageScreen(onBack: () -> Unit) {
                                 color = MiuixTheme.colorScheme.onBackgroundVariant
                             )
                         }
+                        MiuixTextField(
+                            value = clickRandomOffsetInput,
+                            onValueChange = { rawValue ->
+                                val filtered = rawValue.filter { it.isDigit() }
+                                clickRandomOffsetInput = filtered
+                                val parsed = filtered.toIntOrNull() ?: return@MiuixTextField
+                                if (parsed == profile.clickRandomOffsetPx) return@MiuixTextField
+                                AutoClickCoordinator.updateClickRandomOffsetPx(parsed)
+                            },
+                            modifier = Modifier.fillMaxWidth(),
+                            label = "点击随机偏移(px)",
+                            singleLine = true,
+                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number)
+                        )
+                        Text(
+                            text = "每次点击会在目标点周围随机偏移，0 表示关闭（用于降低固定轨迹检测风险）",
+                            color = MiuixTheme.colorScheme.onBackgroundVariant
+                        )
                         Button(
                             onClick = {
                                 val result = AutoClickCoordinator.saveProfile()
