@@ -194,6 +194,32 @@ object AutoClickCoordinator {
         }
     }
 
+    fun renameProfile(profileId: String, newName: String): Result<AutoClickProfile> {
+        val context = appContext ?: return Result.failure(IllegalStateException("Coordinator not initialized"))
+        val normalizedName = newName.trim()
+        if (normalizedName.isBlank()) {
+            return Result.failure(IllegalArgumentException("配置名称不能为空"))
+        }
+
+        return runCatching {
+            val stored = AutoClickRepository.loadProfile(context, profileId)
+                ?: throw IllegalArgumentException("重命名失败：找不到指定配置")
+            val activeId = AutoClickRepository.getActiveProfileId(context)
+            val isActive = activeId == profileId || _profile.value.id == profileId
+            val base = if (_profile.value.id == profileId) _profile.value else stored
+            val renamed = base.copy(
+                name = normalizedName,
+                updatedAt = System.currentTimeMillis()
+            )
+            persistProfileToStorage(context, renamed, makeActive = isActive)
+            if (isActive) {
+                _profile.value = renamed
+            }
+            refreshProfiles()
+            renamed
+        }
+    }
+
     fun discardUnsavedChanges(): Result<AutoClickProfile> {
         val context = appContext ?: return Result.failure(IllegalStateException("Coordinator not initialized"))
 

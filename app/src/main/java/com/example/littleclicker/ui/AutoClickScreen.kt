@@ -7,6 +7,7 @@ import android.net.Uri
 import android.provider.Settings
 import android.text.InputType
 import android.widget.EditText
+import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.NumberPicker
 import android.widget.ScrollView
@@ -25,6 +26,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -43,11 +45,13 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.viewinterop.AndroidView
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
@@ -180,16 +184,37 @@ internal fun AutoClickScreen(
         verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
         item {
-            Text(
-                text = "定时点击器Ultra",
-                style = MiuixTheme.textStyles.title1,
-                fontWeight = FontWeight.Bold
-            )
-            Spacer(modifier = Modifier.height(4.dp))
-            Text(
-                text = "你的抢购、任务助手。本软件永久免费，下载：https://littlecold.cn",
-                color = MiuixTheme.colorScheme.onBackgroundVariant
-            )
+            val density = LocalDensity.current
+            val titleFontSize = MiuixTheme.textStyles.title1.fontSize
+            val titleIconSize = with(density) { titleFontSize.toDp() }
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                AndroidView(
+                    modifier = Modifier.size(titleIconSize),
+                    factory = { viewContext ->
+                        ImageView(viewContext).apply {
+                            scaleType = ImageView.ScaleType.FIT_CENTER
+                            val appIcon = runCatching {
+                                viewContext.packageManager.getApplicationIcon(viewContext.packageName)
+                            }.getOrNull()
+                            if (appIcon != null) {
+                                setImageDrawable(appIcon)
+                            } else {
+                                setImageResource(R.mipmap.ic_launcher)
+                            }
+                            contentDescription = "应用图标"
+                        }
+                    }
+                )
+                Text(
+                    text = "定时点击器Ultra",
+                    style = MiuixTheme.textStyles.title1,
+                    fontWeight = FontWeight.Bold
+                )
+            }
+
         }
 
         if (noticeInfo != null) {
@@ -295,18 +320,13 @@ internal fun AutoClickScreen(
                             }
                         )
                     }
-                    Text("配置管理", fontWeight = FontWeight.SemiBold)
-                    Text(
-                        text = "${profile.name}（循环 ${profile.cycleCount} 次）",
-                        color = MiuixTheme.colorScheme.onBackgroundVariant
-                    )
                     Button(
                         onClick = {
                             context.startActivity(Intent(context, ConfigManageActivity::class.java))
                         },
                         modifier = Modifier.fillMaxWidth()
                     ) {
-                        Text("打开配置管理")
+                        Text("配置管理")
                     }
                     Text(
                         text = "提示：$randomTip",
@@ -381,7 +401,7 @@ internal fun AutoClickScreen(
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Text(text = "动作列表", fontWeight = FontWeight.Bold)
+                Text(text = "动作管理", fontWeight = FontWeight.Bold)
                 Button(onClick = { showAddActionDialog(context) }) {
                     Text("添加动作")
                 }

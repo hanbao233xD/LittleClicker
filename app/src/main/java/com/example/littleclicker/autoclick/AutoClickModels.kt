@@ -115,23 +115,20 @@ data class AutoClickStep(
 fun AutoClickProfile.expandExecutionSteps(): List<AutoClickStep> {
     if (points.isEmpty()) return emptyList()
 
-    val safeCycleCount = cycleCount.coerceAtLeast(1)
     val steps = mutableListOf<AutoClickStep>()
-    repeat(safeCycleCount) {
-        points.forEach { point ->
-            val safeRepeatCount = point.repeatCount.coerceAtLeast(1)
-            repeat(safeRepeatCount) {
-                steps += AutoClickStep(
-                    pointId = point.id,
-                    x = point.x,
-                    y = point.y,
-                    actionType = point.actionType,
-                    endX = point.endX,
-                    endY = point.endY,
-                    delayMs = point.delayMs.coerceAtLeast(0L),
-                    touchDurationMs = point.touchDurationMs.coerceAtLeast(1L)
-                )
-            }
+    points.forEach { point ->
+        val safeRepeatCount = point.repeatCount.coerceAtLeast(1)
+        repeat(safeRepeatCount) {
+            steps += AutoClickStep(
+                pointId = point.id,
+                x = point.x,
+                y = point.y,
+                actionType = point.actionType,
+                endX = point.endX,
+                endY = point.endY,
+                delayMs = point.delayMs.coerceAtLeast(0L),
+                touchDurationMs = point.touchDurationMs.coerceAtLeast(1L)
+            )
         }
     }
     return steps

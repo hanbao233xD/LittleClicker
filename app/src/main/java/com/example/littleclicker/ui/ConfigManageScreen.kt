@@ -11,14 +11,12 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
-import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.Text as M3Text
+import androidx.compose.material.icons.filled.Edit
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.DisposableEffect
@@ -81,6 +79,8 @@ internal fun ConfigManageScreen(onBack: () -> Unit) {
     var loopIntervalDelayInput by remember(profile.loopIntervalDelayMs, profile.runMode) {
         mutableStateOf(profile.loopIntervalDelayMs.toString())
     }
+    var editingProfileId by remember { mutableStateOf<String?>(null) }
+    var editingProfileName by remember { mutableStateOf("") }
 
     DisposableEffect(lifecycleOwner) {
         val observer = LifecycleEventObserver { _, event ->
@@ -147,24 +147,13 @@ internal fun ConfigManageScreen(onBack: () -> Unit) {
                         verticalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
                         Text("当前配置编辑")
-                        OutlinedTextField(
+                        MiuixTextField(
                             value = profile.name,
                             onValueChange = { AutoClickCoordinator.updateProfileName(it) },
                             modifier = Modifier.fillMaxWidth(),
                             singleLine = true,
-                            label = { M3Text("配置名称") }
+                            label = "配置名称"
                         )
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.SpaceBetween
-                        ) {
-                            Text("全局循环次数：${profile.cycleCount}")
-                            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                                TinyButton("-") { AutoClickCoordinator.updateCycleCount(profile.cycleCount - 1) }
-                                TinyButton("+") { AutoClickCoordinator.updateCycleCount(profile.cycleCount + 1) }
-                            }
-                        }
                         val navigationEventOwner = rememberNavigationEventDispatcherOwner(parent = null)
                         CompositionLocalProvider(LocalNavigationEventDispatcherOwner provides navigationEventOwner) {
                             WindowDropdown(
@@ -236,12 +225,12 @@ internal fun ConfigManageScreen(onBack: () -> Unit) {
                         verticalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
                         Text("另存为新配置")
-                        OutlinedTextField(
+                        MiuixTextField(
                             value = saveAsName,
                             onValueChange = { saveAsName = it },
                             modifier = Modifier.fillMaxWidth(),
                             singleLine = true,
-                            label = { M3Text("新配置名称（留空自动编号）") }
+                            label = "新配置名称（留空自动编号）"
                         )
                         Button(
                             onClick = {
@@ -284,6 +273,7 @@ internal fun ConfigManageScreen(onBack: () -> Unit) {
             } else {
                 items(profiles, key = { it.id }) { item ->
                     val isActive = item.id == profile.id
+                    val isEditingName = editingProfileId == item.id
                     Card(
                         modifier = Modifier.fillMaxWidth(),
                         cornerRadius = 20.dp,
@@ -298,14 +288,77 @@ internal fun ConfigManageScreen(onBack: () -> Unit) {
                                 .padding(14.dp),
                             verticalArrangement = Arrangement.spacedBy(6.dp)
                         ) {
-                            Text(item.name, fontWeight = FontWeight.SemiBold)
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Text(
+                                    text = if (isEditingName) "编辑配置名称" else item.name,
+                                    fontWeight = FontWeight.SemiBold,
+                                    modifier = Modifier.weight(1f)
+                                )
+                                IconButton(
+                                    onClick = {
+                                        if (isEditingName) {
+                                            editingProfileId = null
+                                            editingProfileName = ""
+                                        } else {
+                                            editingProfileId = item.id
+                                            editingProfileName = item.name
+                                        }
+                                    }
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Filled.Edit,
+                                        contentDescription = "编辑配置名称"
+                                    )
+                                }
+                            }
+                            if (isEditingName) {
+                                MiuixTextField(
+                                    value = editingProfileName,
+                                    onValueChange = { editingProfileName = it },
+                                    modifier = Modifier.fillMaxWidth(),
+                                    singleLine = true,
+                                    label = "配置名称"
+                                )
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                ) {
+                                    Button(
+                                        onClick = {
+                                            val result = AutoClickCoordinator.renameProfile(item.id, editingProfileName)
+                                            result.onSuccess {
+                                                editingProfileId = null
+                                                editingProfileName = ""
+                                                Toast.makeText(context, "已重命名为：${it.name}", Toast.LENGTH_SHORT).show()
+                                            }.onFailure {
+                                                Toast.makeText(context, it.message ?: "重命名失败", Toast.LENGTH_SHORT).show()
+                                            }
+                                        },
+                                        modifier = Modifier.weight(1f)
+                                    ) {
+                                        Text("保存名称")
+                                    }
+                                    Button(
+                                        onClick = {
+                                            editingProfileId = null
+                                            editingProfileName = ""
+                                        },
+                                        modifier = Modifier.weight(1f)
+                                    ) {
+                                        Text("取消")
+                                    }
+                                }
+                            }
                             Text("id: ${item.id}", color = MiuixTheme.colorScheme.onBackgroundVariant)
                             Text(
                                 "更新时间：${formatDateTime(item.updatedAt)}",
                                 color = MiuixTheme.colorScheme.onBackgroundVariant
                             )
                             Text(
-                                "点位数：${item.points.size}，循环：${item.cycleCount}",
+                                "点位数：${item.points.size}",
                                 color = MiuixTheme.colorScheme.onBackgroundVariant
                             )
                             Row(
@@ -385,17 +438,5 @@ internal fun ConfigManageScreen(onBack: () -> Unit) {
                 Spacer(modifier = Modifier.height(12.dp))
             }
         }
-    }
-}
-
-@Composable
-private fun TinyButton(text: String, onClick: () -> Unit) {
-    Button(
-        onClick = onClick,
-        modifier = Modifier
-            .height(34.dp)
-            .width(42.dp)
-    ) {
-        Text(text)
     }
 }

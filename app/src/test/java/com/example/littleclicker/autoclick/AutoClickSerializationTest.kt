@@ -60,7 +60,7 @@ class AutoClickSerializationTest {
     }
 
     @Test
-    fun expandExecutionSteps_respectsPointRepeatAndGlobalCycle() {
+    fun expandExecutionSteps_respectsPointRepeatOnly() {
         val profile = AutoClickProfile(
             points = listOf(
                 AutoClickPoint(id = 1, x = 10, y = 20, delayMs = 100, touchDurationMs = 40, repeatCount = 2),
@@ -71,8 +71,8 @@ class AutoClickSerializationTest {
 
         val steps = profile.expandExecutionSteps()
 
-        assertEquals(6, steps.size)
-        assertEquals(listOf(1, 1, 2, 1, 1, 2), steps.map { it.pointId })
+        assertEquals(3, steps.size)
+        assertEquals(listOf(1, 1, 2), steps.map { it.pointId })
         assertEquals(100L, steps[0].delayMs)
         assertEquals(60L, steps[2].touchDurationMs)
     }

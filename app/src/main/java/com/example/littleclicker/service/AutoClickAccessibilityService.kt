@@ -198,18 +198,13 @@ class AutoClickAccessibilityService : AccessibilityService() {
         ensureNotCancelled()
         waitIfPaused()
 
-        val safeCycles = profile.cycleCount.coerceAtLeast(1)
         when (profile.runMode) {
             AutoClickRunMode.RunOnce -> {
-                repeat(safeCycles) {
-                    executePointSequence(profile.points)
-                }
+                executePointSequence(profile.points)
             }
             AutoClickRunMode.LoopUntilStopped -> {
                 while (currentCoroutineContext().isActive) {
-                    repeat(safeCycles) {
-                        executePointSequence(profile.points)
-                    }
+                    executePointSequence(profile.points)
                     ensureNotCancelled()
                     waitIfPaused()
                     val loopDelayMs = profile.loopIntervalDelayMs.coerceAtLeast(0L)

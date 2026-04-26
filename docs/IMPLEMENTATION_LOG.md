@@ -810,3 +810,79 @@
     - 以上改动接入现有“保存当前配置”流程统一持久化。
 - 验证结果：
   - `./gradlew :app:compileDebugKotlin --no-daemon` 通过。
+
+## 2026-04-26（配置管理页适配 miuix 编辑框 + 取消全局循环次数）
+- 需求实现：
+  - 配置管理页面输入框统一适配 miuix；
+  - 取消“全局循环次数”功能（不再提供编辑，也不再参与执行）。
+- 修复内容：
+  - `ConfigManageScreen`：
+    - 将“配置名称”“新配置名称”输入由 Material3 `OutlinedTextField` 替换为 miuix `TextField`；
+    - 移除“全局循环次数”行及 `+/-` 调整入口；
+    - 本地配置列表文案由“点位数 + 循环次数”调整为仅显示“点位数”。
+  - 执行逻辑：
+    - `AutoClickAccessibilityService.executeProfile` 不再按 `cycleCount` 叠加执行轮次，仅按动作序列执行；
+    - `AutoClickProfile.expandExecutionSteps` 同步去除 `cycleCount` 轮次展开，仅保留动作级 `repeatCount`。
+  - 其他联动：
+    - `AutoClickScreen` 中“配置管理”摘要去除“循环 N 次”展示，避免残留入口感知；
+    - 单测 `AutoClickSerializationTest` 更新步骤展开断言，覆盖“忽略全局循环次数”行为。
+- 验证结果：
+  - `./gradlew :app:compileDebugKotlin :app:testDebugUnitTest --no-daemon` 通过。
+
+## 2026-04-26（配置管理列表支持编辑图标重命名）
+- 需求实现：
+  - 在“配置管理 -> 本地配置列表”中，为每个配置名称右侧新增编辑图标；
+  - 点击图标后可直接修改该配置名称。
+- 修复内容：
+  - `ConfigManageScreen`：
+    - 配置名称行新增 `Edit` 图标按钮；
+    - 点击后切换为列表内联编辑态（miuix `TextField` + “保存名称/取消”按钮）；
+    - 保存时调用协调器重命名接口，成功后刷新列表并提示。
+  - `AutoClickCoordinator`：
+    - 新增 `renameProfile(profileId, newName)`：
+      - 校验名称非空；
+      - 支持重命名任意配置（含当前激活配置）；
+      - 写回本地存储并刷新配置列表。
+- 验证结果：
+  - `./gradlew :app:compileDebugKotlin :app:testDebugUnitTest --no-daemon` 通过。
+
+## 2026-04-26（主界面标题左侧增加同尺寸应用图标）
+- 需求实现：
+  - 在软件主界面标题左侧增加一个与标题文字同尺寸的软件图标。
+- 修复内容：
+  - `AutoClickScreen` 顶部标题区域由单个 `Text` 调整为 `Row`；
+  - 左侧新增 `Image`，资源使用 `R.mipmap.ic_launcher`；
+  - 图标尺寸按 `MiuixTheme.textStyles.title1.fontSize` 动态换算为 `dp`，与标题字号保持一致。
+- 验证结果：
+  - `./gradlew :app:compileDebugKotlin --no-daemon` 通过。
+
+## 2026-04-26（修复主界面标题图标在 Compose 中加载崩溃）
+- 问题现象：
+  - 主界面标题左侧使用 `painterResource(R.mipmap.ic_launcher)` 时，出现：
+  - `IllegalArgumentException: Only VectorDrawables and rasterized asset types are supported`
+- 根因分析：
+  - `mipmap/ic_launcher` 在 API 26+ 命中自适应图标 XML（Adaptive Icon），`painterResource` 不支持该类型。
+- 修复内容：
+  - `AutoClickScreen` 改为通过 `PackageManager.getApplicationIcon(...)` 读取应用图标 `Drawable`；
+  - 使用 `toBitmap(...)` 转换为位图后，通过 `Image(bitmap = ...)` 显示；
+  - 当位图获取失败时，回退到 `R.drawable.ic_launcher_foreground`（VectorDrawable）作为兜底。
+- 验证结果：
+  - `./gradlew :app:compileDebugKotlin --no-daemon` 通过。
+
+## 2026-04-26（标题图标兼容性进一步调整：改用 AndroidView ImageView）
+- 问题现象：
+  - 部分环境下 `AutoClickScreen` 出现 `Unresolved reference: graphics / toBitmap` 等编译期问题。
+- 修复内容：
+  - 标题图标实现改为 `AndroidView` 承载 `ImageView`，直接 `setImageResource(R.mipmap.ic_launcher)`；
+  - 移除 `asImageBitmap`、`toBitmap` 与相关转换逻辑，避免依赖差异导致的编译问题。
+- 验证结果：
+  - `./gradlew :app:compileDebugKotlin --no-daemon` 通过。
+
+## 2026-04-26（修复标题图标误显示：恢复真实应用图标获取）
+- 问题现象：
+  - 标题左侧图标显示为占位图，未显示当前软件真实图标。
+- 修复内容：
+  - `AutoClickScreen` 标题图标改为优先使用 `PackageManager.getApplicationIcon(packageName)`；
+  - 当系统取图失败时，再回退到 `R.mipmap.ic_launcher`。
+- 验证结果：
+  - `./gradlew :app:compileDebugKotlin --no-daemon` 通过。
