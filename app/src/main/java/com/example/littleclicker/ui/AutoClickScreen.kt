@@ -28,7 +28,6 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.DisposableEffect
@@ -46,7 +45,6 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -61,7 +59,6 @@ import com.example.littleclicker.autoclick.AutoClickActionType
 import com.example.littleclicker.autoclick.AutoClickCoordinator
 import com.example.littleclicker.autoclick.AutoClickPoint
 import com.example.littleclicker.autoclick.AutoClickRecordingMode
-import com.example.littleclicker.autoclick.AutoClickRunMode
 import com.example.littleclicker.autoclick.TimeSyncState
 import com.example.littleclicker.autoclick.displayName
 import com.example.littleclicker.autoclick.usesScreenCoordinates
@@ -77,7 +74,6 @@ import top.yukonga.miuix.kmp.basic.Button
 import top.yukonga.miuix.kmp.basic.Card
 import top.yukonga.miuix.kmp.basic.CardDefaults
 import top.yukonga.miuix.kmp.basic.Text
-import top.yukonga.miuix.kmp.basic.TextField as MiuixTextField
 import top.yukonga.miuix.kmp.extra.SuperSwitch
 import top.yukonga.miuix.kmp.extra.WindowDropdown
 import top.yukonga.miuix.kmp.theme.MiuixTheme
@@ -165,18 +161,10 @@ internal fun AutoClickScreen(
     }
     val pendingStatuses = statuses.filterNot { it.granted }
     val randomTip = remember(refreshToken) { context.loadRandomAutoClickTip() }
-    val runModeItems = listOf("运行一次", "循环运行直至手动停止")
     val recordModeItems = listOf("仅录制", "录制时穿透到应用")
-    val selectedRunModeIndex = when (profile.runMode) {
-        AutoClickRunMode.RunOnce -> 0
-        AutoClickRunMode.LoopUntilStopped -> 1
-    }
     val selectedRecordModeIndex = when (profile.recordingMode) {
         AutoClickRecordingMode.RecordOnly -> 0
         AutoClickRecordingMode.RecordAndPassThrough -> 1
-    }
-    var loopIntervalDelayInput by remember(profile.loopIntervalDelayMs, profile.runMode) {
-        mutableStateOf(profile.loopIntervalDelayMs.toString())
     }
 
     LazyColumn(
@@ -268,7 +256,7 @@ internal fun AutoClickScreen(
                         .padding(14.dp),
                     verticalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
-                    Text("动作悬浮窗与运行方式")
+                    Text("点击配置")
                     Text(
                         text = "状态：${runtime.state} ${runtime.message ?: ""}",
                         color = MiuixTheme.colorScheme.onBackgroundVariant
@@ -293,41 +281,6 @@ internal fun AutoClickScreen(
                     val navigationEventOwner = rememberNavigationEventDispatcherOwner(parent = null)
                     CompositionLocalProvider(LocalNavigationEventDispatcherOwner provides navigationEventOwner) {
                         WindowDropdown(
-                            items = runModeItems,
-                            selectedIndex = selectedRunModeIndex,
-                            title = "运行方式",
-                            summary = "运行时点按音量下键可强制停止",
-                            onSelectedIndexChange = { index ->
-                                val mode = if (index == 0) {
-                                    AutoClickRunMode.RunOnce
-                                } else {
-                                    AutoClickRunMode.LoopUntilStopped
-                                }
-                                AutoClickCoordinator.updateRunMode(mode)
-                            }
-                        )
-                        if (profile.runMode == AutoClickRunMode.LoopUntilStopped) {
-                            MiuixTextField(
-                                value = loopIntervalDelayInput,
-                                onValueChange = { rawValue ->
-                                    val filtered = rawValue.filter { it.isDigit() }
-                                    loopIntervalDelayInput = filtered
-                                    val parsed = filtered.toLongOrNull() ?: return@MiuixTextField
-                                    if (parsed == profile.loopIntervalDelayMs) return@MiuixTextField
-                                    AutoClickCoordinator.updateLoopIntervalDelay(parsed)
-                                    AutoClickCoordinator.saveProfile()
-                                },
-                                modifier = Modifier.fillMaxWidth(),
-                                label = "每次循环延迟(ms)",
-                                singleLine = true,
-                                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number)
-                            )
-                            Text(
-                                text = "决定每次循环间隔多久",
-                                color = MiuixTheme.colorScheme.onBackgroundVariant
-                            )
-                        }
-                        WindowDropdown(
                             items = recordModeItems,
                             selectedIndex = selectedRecordModeIndex,
                             title = "录制方式",
@@ -341,6 +294,19 @@ internal fun AutoClickScreen(
                                 AutoClickCoordinator.updateRecordingMode(mode)
                             }
                         )
+                    }
+                    Text("配置管理", fontWeight = FontWeight.SemiBold)
+                    Text(
+                        text = "${profile.name}（循环 ${profile.cycleCount} 次）",
+                        color = MiuixTheme.colorScheme.onBackgroundVariant
+                    )
+                    Button(
+                        onClick = {
+                            context.startActivity(Intent(context, ConfigManageActivity::class.java))
+                        },
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Text("打开配置管理")
                     }
                     Text(
                         text = "提示：$randomTip",
@@ -407,38 +373,6 @@ internal fun AutoClickScreen(
                 isDarkTheme = isDarkTheme,
                 cardContainerColor = cardContainerColor
             )
-        }
-
-        item {
-            Card(
-                modifier = Modifier.fillMaxWidth(),
-                cornerRadius = 20.dp,
-                colors = CardDefaults.defaultColors(
-                    color = cardContainerColor,
-                    contentColor = MiuixTheme.colorScheme.onSurfaceContainer
-                )
-            ) {
-                Column(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(14.dp),
-                    verticalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    Text("配置管理")
-                    Text(
-                        text = "${profile.name}（循环 ${profile.cycleCount} 次）",
-                        color = MiuixTheme.colorScheme.onBackgroundVariant
-                    )
-                    Button(
-                        onClick = {
-                            context.startActivity(Intent(context, ConfigManageActivity::class.java))
-                        },
-                        modifier = Modifier.fillMaxWidth()
-                    ) {
-                        Text("打开配置管理")
-                    }
-                }
-            }
         }
 
         item {

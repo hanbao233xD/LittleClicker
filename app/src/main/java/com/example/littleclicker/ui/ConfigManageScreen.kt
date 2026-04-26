@@ -14,11 +14,13 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text as M3Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -31,11 +33,15 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import com.example.littleclicker.autoclick.AutoClickCoordinator
+import com.example.littleclicker.autoclick.AutoClickRunMode
+import androidx.navigationevent.compose.LocalNavigationEventDispatcherOwner
+import androidx.navigationevent.compose.rememberNavigationEventDispatcherOwner
 import top.yukonga.miuix.kmp.basic.Button
 import top.yukonga.miuix.kmp.basic.Card
 import top.yukonga.miuix.kmp.basic.CardDefaults
@@ -43,7 +49,9 @@ import top.yukonga.miuix.kmp.basic.Icon
 import top.yukonga.miuix.kmp.basic.IconButton
 import top.yukonga.miuix.kmp.basic.Scaffold
 import top.yukonga.miuix.kmp.basic.Text
+import top.yukonga.miuix.kmp.basic.TextField as MiuixTextField
 import top.yukonga.miuix.kmp.basic.TopAppBar
+import top.yukonga.miuix.kmp.extra.WindowDropdown
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 
 @Composable
@@ -63,8 +71,16 @@ internal fun ConfigManageScreen(onBack: () -> Unit) {
     val cardContainerColor = MiuixTheme.colorScheme.surfaceContainer
     val activeCardColor = if (isDarkTheme) Color(0xFF1F2A3B) else Color(0xFFEAF2FF)
     val successColor = if (isDarkTheme) Color(0xFF7AD7A1) else Color(0xFF1F8B4C)
+    val runModeItems = listOf("运行一次", "循环运行直至手动停止")
+    val selectedRunModeIndex = when (profile.runMode) {
+        AutoClickRunMode.RunOnce -> 0
+        AutoClickRunMode.LoopUntilStopped -> 1
+    }
     var saveAsName by remember { mutableStateOf("") }
     var pendingDeleteId by remember { mutableStateOf<String?>(null) }
+    var loopIntervalDelayInput by remember(profile.loopIntervalDelayMs, profile.runMode) {
+        mutableStateOf(profile.loopIntervalDelayMs.toString())
+    }
 
     DisposableEffect(lifecycleOwner) {
         val observer = LifecycleEventObserver { _, event ->
@@ -148,6 +164,43 @@ internal fun ConfigManageScreen(onBack: () -> Unit) {
                                 TinyButton("-") { AutoClickCoordinator.updateCycleCount(profile.cycleCount - 1) }
                                 TinyButton("+") { AutoClickCoordinator.updateCycleCount(profile.cycleCount + 1) }
                             }
+                        }
+                        val navigationEventOwner = rememberNavigationEventDispatcherOwner(parent = null)
+                        CompositionLocalProvider(LocalNavigationEventDispatcherOwner provides navigationEventOwner) {
+                            WindowDropdown(
+                                items = runModeItems,
+                                selectedIndex = selectedRunModeIndex,
+                                title = "运行方式",
+                                summary = "运行时点按音量下键可强制停止",
+                                onSelectedIndexChange = { index ->
+                                    val mode = if (index == 0) {
+                                        AutoClickRunMode.RunOnce
+                                    } else {
+                                        AutoClickRunMode.LoopUntilStopped
+                                    }
+                                    AutoClickCoordinator.updateRunMode(mode)
+                                }
+                            )
+                        }
+                        if (profile.runMode == AutoClickRunMode.LoopUntilStopped) {
+                            MiuixTextField(
+                                value = loopIntervalDelayInput,
+                                onValueChange = { rawValue ->
+                                    val filtered = rawValue.filter { it.isDigit() }
+                                    loopIntervalDelayInput = filtered
+                                    val parsed = filtered.toLongOrNull() ?: return@MiuixTextField
+                                    if (parsed == profile.loopIntervalDelayMs) return@MiuixTextField
+                                    AutoClickCoordinator.updateLoopIntervalDelay(parsed)
+                                },
+                                modifier = Modifier.fillMaxWidth(),
+                                label = "每次循环延迟(ms)",
+                                singleLine = true,
+                                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number)
+                            )
+                            Text(
+                                text = "决定每次循环间隔多久",
+                                color = MiuixTheme.colorScheme.onBackgroundVariant
+                            )
                         }
                         Button(
                             onClick = {
