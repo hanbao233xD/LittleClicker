@@ -12,6 +12,7 @@ import android.widget.LinearLayout
 import android.widget.NumberPicker
 import android.widget.Toast
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -39,6 +40,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -67,7 +69,10 @@ import com.example.littleclicker.service.FloatingWindowService
 import com.example.littleclicker.service.TimerFloatingWindowService
 import com.example.littleclicker.update.AppNoticeInfo
 import com.example.littleclicker.update.AppUpdateInfo
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import java.util.Calendar
 import kotlin.random.Random
 import top.yukonga.miuix.kmp.basic.Button
@@ -164,6 +169,7 @@ internal fun AutoClickScreen(
     val pendingStatuses = statuses.filterNot { it.granted }
     val allPermissionsReady = pendingStatuses.isEmpty()
     val randomTip = remember(refreshToken) { context.loadRandomAutoClickTip() }
+    val coroutineScope = rememberCoroutineScope()
     val recordModeItems = listOf("仅录制", "录制时穿透到应用")
     val selectedRecordModeIndex = when (profile.recordingMode) {
         AutoClickRecordingMode.RecordOnly -> 0
@@ -239,7 +245,18 @@ internal fun AutoClickScreen(
         item {
             PermissionStatusSummaryCard(
                 allReady = allPermissionsReady,
-                isDarkTheme = isDarkTheme
+                isDarkTheme = isDarkTheme,
+                onRootClick = {
+                    coroutineScope.launch {
+                        val result = withContext(Dispatchers.IO) {
+                            requestRootAndEnableAccessibility(context)
+                        }
+                        Toast.makeText(context, result.message, Toast.LENGTH_SHORT).show()
+                        if (result.success) {
+                            refreshToken++
+                        }
+                    }
+                }
             )
             if (!allPermissionsReady) {
                 Spacer(modifier = Modifier.height(6.dp))
@@ -668,6 +685,7 @@ private fun Context.loadRandomAutoClickTip(): String {
 private fun PermissionStatusSummaryCard(
     allReady: Boolean,
     isDarkTheme: Boolean,
+    onRootClick: () -> Unit,
 ) {
     val successBg = if (isDarkTheme) Color(0xFF1C3327) else Color(0xFFE9F8EE)
     val errorBg = if (isDarkTheme) Color(0xFF3A2023) else Color(0xFFFDEBEC)
@@ -697,9 +715,16 @@ private fun PermissionStatusSummaryCard(
                 tint = if (allReady) successTint else errorTint
             )
             SmallTitle(
+                modifier = Modifier.weight(1f),
                 text = message,
                 insideMargin = PaddingValues(0.dp),
                 textColor = if (allReady) successTint else errorTint
+            )
+            Text(
+                text = "ROOT",
+                color = Color(0xFF1976D2),
+                fontWeight = FontWeight.Bold,
+                modifier = Modifier.clickable(onClick = onRootClick)
             )
         }
     }

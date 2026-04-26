@@ -997,3 +997,27 @@
   - `./gradlew :app:assembleDebug --no-daemon` 通过。
   - `adb install -r app/build/outputs/apk/debug/app-debug.apk` 安装成功。
   - `adb logcat -c` 后执行 `adb shell monkey -p com.example.littleclicker -c android.intent.category.LAUNCHER 1` 可正常拉起应用；未检出 LittleClicker 崩溃日志。
+
+## 2026-04-26（系统权限适配：新增 ROOT 申请并尝试自动开启无障碍）
+- 需求实现：
+  - 在权限状态展示的 `SmallTitle` 区域右侧增加蓝色字体 `ROOT` 入口；
+  - 点击后在支持 root 的设备上直接调用 `su`，尝试自动开启无障碍服务。
+- 修复内容：
+  - `UiHelpers`：
+    - 新增 `RootAccessibilityEnableResult`；
+    - 新增 `requestRootAndEnableAccessibility(context)`：
+      - 先通过 `su -c id` 检测 root 可用性；
+      - root 可用时执行：
+        - `settings put secure enabled_accessibility_services ...`
+        - `settings put secure accessibility_enabled 1`
+      - 执行后再次校验无障碍是否已生效，并返回对应提示文案。
+    - 新增 `runSuCommand(...)`，统一执行 `su` 命令并处理超时。
+  - `AutoClickScreen`：
+    - 权限状态卡 `PermissionStatusSummaryCard` 右侧新增蓝色 `ROOT` 文本；
+    - 点击 `ROOT` 后在 IO 线程执行 root 开启流程，完成后 toast 提示结果；
+    - 开启成功时自动刷新权限状态展示。
+- 验证结果：
+  - `./gradlew :app:compileDebugKotlin :app:testDebugUnitTest --no-daemon` 通过。
+  - `./gradlew :app:assembleDebug --no-daemon` 通过。
+  - `adb install -r app/build/outputs/apk/debug/app-debug.apk` 安装成功。
+  - `adb logcat -c` 后执行 `adb shell monkey -p com.example.littleclicker -c android.intent.category.LAUNCHER 1` 可正常拉起应用；未检出 LittleClicker 崩溃日志。

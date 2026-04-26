@@ -14,6 +14,12 @@ import com.example.littleclicker.service.AutoClickAccessibilityService
 import java.text.SimpleDateFormat
 import java.util.Calendar
 import java.util.Locale
+import java.util.concurrent.TimeUnit
+
+internal data class RootAccessibilityEnableResult(
+    val success: Boolean,
+    val message: String,
+)
 
 internal fun openOverlaySettings(context: Context) {
     val intent = Intent(
@@ -73,6 +79,103 @@ internal fun ensureOverlayStartPermissions(context: Context): Boolean {
         return false
     }
     return true
+}
+
+internal fun requestRootAndEnableAccessibility(context: Context): RootAccessibilityEnableResult {
+    if (isAccessibilityServiceEnabled(context)) {
+        return RootAccessibilityEnableResult(
+            success = true,
+            message = "无障碍已开启"
+        )
+    }
+
+    val hasRoot = runSuCommand("id", timeoutMs = 15_000L)?.let { result ->
+        result.exitCode == 0 && (result.stdout + result.stderr).contains("uid=0")
+    } == true
+    if (!hasRoot) {
+        return RootAccessibilityEnableResult(
+            success = false,
+            message = "未获取到ROOT权限，请手动开启无障碍"
+        )
+    }
+
+    val expectedComponentName = ComponentName(context, AutoClickAccessibilityService::class.java).flattenToString()
+    val currentEnabledServices = Settings.Secure.getString(
+        context.contentResolver,
+        Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES
+    ).orEmpty()
+        .split(':')
+        .map { it.trim() }
+        .filter { it.isNotEmpty() }
+    val mergedServices = (currentEnabledServices + expectedComponentName)
+        .distinctBy { it.lowercase(Locale.getDefault()) }
+        .joinToString(":")
+
+    val putServicesResult = runSuCommand(
+        command = "settings put secure enabled_accessibility_services $mergedServices",
+        timeoutMs = 15_000L
+    )
+    if (putServicesResult == null || putServicesResult.exitCode != 0) {
+        return RootAccessibilityEnableResult(
+            success = false,
+            message = "ROOT写入无障碍服务列表失败，请手动开启"
+        )
+    }
+
+    val enableResult = runSuCommand(
+        command = "settings put secure accessibility_enabled 1",
+        timeoutMs = 15_000L
+    )
+    if (enableResult == null || enableResult.exitCode != 0) {
+        return RootAccessibilityEnableResult(
+            success = false,
+            message = "ROOT开启无障碍失败，请手动开启"
+        )
+    }
+
+    return if (isAccessibilityServiceEnabled(context)) {
+        RootAccessibilityEnableResult(
+            success = true,
+            message = "ROOT授权成功，已自动开启无障碍"
+        )
+    } else {
+        RootAccessibilityEnableResult(
+            success = false,
+            message = "ROOT命令已执行，但无障碍未生效，请手动开启"
+        )
+    }
+}
+
+private data class SuCommandResult(
+    val exitCode: Int,
+    val stdout: String,
+    val stderr: String,
+)
+
+private fun runSuCommand(command: String, timeoutMs: Long): SuCommandResult? {
+    val process = runCatching {
+        ProcessBuilder("su", "-c", command).start()
+    }.getOrNull() ?: return null
+
+    val finished = runCatching {
+        process.waitFor(timeoutMs, TimeUnit.MILLISECONDS)
+    }.getOrDefault(false)
+    if (!finished) {
+        process.destroyForcibly()
+        return null
+    }
+
+    val stdout = runCatching {
+        process.inputStream.bufferedReader().use { it.readText() }
+    }.getOrDefault("")
+    val stderr = runCatching {
+        process.errorStream.bufferedReader().use { it.readText() }
+    }.getOrDefault("")
+    return SuCommandResult(
+        exitCode = process.exitValue(),
+        stdout = stdout,
+        stderr = stderr
+    )
 }
 
 internal fun showDateTimePicker(
