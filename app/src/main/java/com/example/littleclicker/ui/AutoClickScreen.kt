@@ -691,7 +691,7 @@ private fun PermissionStatusSummaryCard(
     val errorBg = if (isDarkTheme) Color(0xFF3A2023) else Color(0xFFFDEBEC)
     val successTint = if (isDarkTheme) Color(0xFF90E3B3) else Color(0xFF1F8B4C)
     val errorTint = if (isDarkTheme) Color(0xFFFFA7A7) else Color(0xFFC62828)
-    val message = if (allReady) "权限已就绪，准备开始点击" else "权限未就绪，请先完成授权"
+    val message = if (allReady) "权限已就绪" else "权限未就绪"
 
     Card(
         modifier = Modifier.fillMaxWidth(),
@@ -721,8 +721,8 @@ private fun PermissionStatusSummaryCard(
                 textColor = if (allReady) successTint else errorTint
             )
             Text(
-                text = "ROOT",
-                color = Color(0xFF1976D2),
+                text = "ROOT激活无障碍",
+                color = MiuixTheme.colorScheme.primary,
                 fontWeight = FontWeight.Bold,
                 modifier = Modifier.clickable(onClick = onRootClick)
             )
