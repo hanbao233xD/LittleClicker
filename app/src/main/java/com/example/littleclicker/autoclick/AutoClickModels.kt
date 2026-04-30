@@ -10,12 +10,18 @@ data class AutoClickPoint(
     val delayMs: Long = 200L,
     val touchDurationMs: Long = 50L,
     val repeatCount: Int = 1,
+    val targetText: String = "",
+    val textFindRetryCount: Int = DEFAULT_TEXT_FIND_RETRY_COUNT,
+    val textFindRetryDelayMs: Long = DEFAULT_TEXT_FIND_RETRY_DELAY_MS,
+    val continuousRetry: Boolean = false,
 )
 
 const val DEFAULT_NTP_SERVER_HOST = "ntp.aliyun.com"
 const val DEFAULT_LOOP_INTERVAL_DELAY_MS = 200L
 const val DEFAULT_CLICK_RANDOM_OFFSET_PX = 6
 const val DEFAULT_RANDOM_DELAY_MS = 10L
+const val DEFAULT_TEXT_FIND_RETRY_COUNT = 3
+const val DEFAULT_TEXT_FIND_RETRY_DELAY_MS = 500L
 
 data class AutoClickProfile(
     val id: String = "default",
@@ -40,6 +46,7 @@ enum class AutoClickActionType {
     Home,
     Back,
     Recents,
+    TextClick,
 }
 
 val AutoClickActionType.displayName: String
@@ -49,12 +56,14 @@ val AutoClickActionType.displayName: String
         AutoClickActionType.Home -> "Home"
         AutoClickActionType.Back -> "Back"
         AutoClickActionType.Recents -> "多任务"
+        AutoClickActionType.TextClick -> "识别文字点击"
     }
 
 val AutoClickActionType.usesScreenCoordinates: Boolean
     get() = when (this) {
         AutoClickActionType.Click, AutoClickActionType.Swipe -> true
         AutoClickActionType.Home, AutoClickActionType.Back, AutoClickActionType.Recents -> false
+        AutoClickActionType.TextClick -> false
     }
 
 val AutoClickActionType.usesTouchDuration: Boolean

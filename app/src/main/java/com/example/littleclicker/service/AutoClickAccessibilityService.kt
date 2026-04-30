@@ -254,6 +254,11 @@ class AutoClickAccessibilityService : AccessibilityService() {
                 ensureNotCancelled()
                 waitIfPaused()
 
+                if (point.actionType == AutoClickActionType.TextClick) {
+                    executeTextClickWithRetry(point, clickRandomOffsetPx)
+                    return@repeat
+                }
+
                 val dispatchResult = dispatchPoint(
                     point = point,
                     clickRandomOffsetPx = clickRandomOffsetPx
@@ -264,7 +269,6 @@ class AutoClickAccessibilityService : AccessibilityService() {
                         if (stopRequested || !currentCoroutineContext().isActive) {
                             throw CancellationException("Gesture cancelled by stop request")
                         }
-                        // 用户触摸导致手势被系统取消时，仅跳过当前动作，不终止整轮任务。
                         return@repeat
                     }
                     GestureDispatchResult.FailedToStart -> {
@@ -272,6 +276,36 @@ class AutoClickAccessibilityService : AccessibilityService() {
                             throw CancellationException("Gesture cancelled by stop request")
                         }
                         throw IllegalStateException("动作手势派发失败")
+                    }
+                }
+            }
+        }
+    }
+
+    private suspend fun executeTextClickWithRetry(
+        point: AutoClickPoint,
+        clickRandomOffsetPx: Int,
+    ) {
+        val maxRetries = if (point.continuousRetry) Int.MAX_VALUE else point.textFindRetryCount.coerceAtLeast(1)
+        val retryDelay = point.textFindRetryDelayMs.coerceAtLeast(0L)
+
+        repeat(maxRetries) { attempt ->
+            ensureNotCancelled()
+            waitIfPaused()
+
+            val dispatchResult = dispatchPoint(point, clickRandomOffsetPx)
+            when (dispatchResult) {
+                GestureDispatchResult.Completed -> return
+                GestureDispatchResult.Cancelled -> {
+                    if (stopRequested || !currentCoroutineContext().isActive) {
+                        throw CancellationException("Gesture cancelled by stop request")
+                    }
+                    return
+                }
+                GestureDispatchResult.FailedToStart -> {
+                    if (!point.continuousRetry && attempt >= maxRetries - 1) return
+                    if (retryDelay > 0L) {
+                        delay(retryDelay)
                     }
                 }
             }
@@ -315,6 +349,23 @@ class AutoClickAccessibilityService : AccessibilityService() {
             AutoClickActionType.Home -> dispatchGlobalAction(GLOBAL_ACTION_HOME)
             AutoClickActionType.Back -> dispatchGlobalAction(GLOBAL_ACTION_BACK)
             AutoClickActionType.Recents -> dispatchGlobalAction(GLOBAL_ACTION_RECENTS)
+            AutoClickActionType.TextClick -> {
+                val center = findNodeCenterByText(point.targetText)
+                if (center != null) {
+                    val offsetTap = applyRandomClickOffset(
+                        x = center.first,
+                        y = center.second,
+                        randomOffsetPx = clickRandomOffsetPx
+                    )
+                    dispatchSingleTap(
+                        x = offsetTap.first,
+                        y = offsetTap.second,
+                        durationMs = point.touchDurationMs.coerceAtLeast(1L)
+                    )
+                } else {
+                    GestureDispatchResult.FailedToStart
+                }
+            }
         }
     }
 
@@ -325,6 +376,24 @@ class AutoClickAccessibilityService : AccessibilityService() {
         } else {
             GestureDispatchResult.FailedToStart
         }
+    }
+
+    private fun findNodeCenterByText(targetText: String): Pair<Int, Int>? {
+        if (targetText.isBlank()) return null
+        val root = rootInActiveWindow ?: return null
+        val nodes = root.findAccessibilityNodeInfosByText(targetText)
+        if (nodes.isNullOrEmpty()) {
+            root.recycle()
+            return null
+        }
+        val node = nodes.firstOrNull { it.isVisibleToUser } ?: nodes.first()
+        val rect = android.graphics.Rect()
+        node.getBoundsInScreen(rect)
+        val centerX = rect.centerX()
+        val centerY = rect.centerY()
+        nodes.forEach { it.recycle() }
+        root.recycle()
+        return centerX to centerY
     }
 
     private fun replayRecordedAction(

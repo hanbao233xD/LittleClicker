@@ -11,6 +11,7 @@ import android.provider.Settings
 import android.text.InputType
 import android.view.Gravity
 import android.view.WindowManager
+import android.widget.CheckBox
 import android.widget.EditText
 import android.widget.LinearLayout
 import android.widget.ScrollView
@@ -774,13 +775,36 @@ class FloatingWindowService : LifecycleService() {
         val touchInput = createNumberInput(latestPoint.touchDurationMs.toInt())
         val repeatInput = createNumberInput(latestPoint.repeatCount)
         val isSwipeAction = latestPoint.actionType == AutoClickActionType.Swipe
+        val isTextClickAction = latestPoint.actionType == AutoClickActionType.TextClick
         val usesScreenCoordinates = latestPoint.actionType.usesScreenCoordinates
         val usesTouchDuration = latestPoint.actionType.usesTouchDuration
+
+        val targetTextInput = EditText(this).apply {
+            setText(latestPoint.targetText)
+            hint = "输入要识别的文字"
+        }
+        val retryCountInput = createNumberInput(latestPoint.textFindRetryCount)
+        val retryDelayInput = createNumberInput(latestPoint.textFindRetryDelayMs.toInt())
+        val continuousRetryCheckBox = CheckBox(this).apply {
+            text = "持续重试（找到并点击后才执行下一步）"
+            isChecked = latestPoint.continuousRetry
+            setOnCheckedChangeListener { _, checked ->
+                retryCountInput.isEnabled = !checked
+                retryDelayInput.isEnabled = !checked
+            }
+        }
+        if (latestPoint.continuousRetry) {
+            retryCountInput.isEnabled = false
+            retryDelayInput.isEnabled = false
+        }
 
         val container = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             setPadding(40, 30, 40, 10)
             addView(buildField("动作类型", createReadOnlyInput(latestPoint.actionType.displayName)))
+            if (isTextClickAction) {
+                addView(buildField("目标文字", targetTextInput))
+            }
             if (usesScreenCoordinates) {
                 addView(buildField("X 中心坐标", xInput))
                 addView(buildField("Y 中心坐标", yInput))
@@ -790,10 +814,15 @@ class FloatingWindowService : LifecycleService() {
                 addView(buildField("滑动结束Y", endYInput))
             }
             addView(buildField("点击延迟(ms)", delayInput))
-            if (usesTouchDuration) {
+            if (usesTouchDuration || isTextClickAction) {
                 addView(buildField("触摸时长(ms)", touchInput))
             }
             addView(buildField("重复次数", repeatInput))
+            if (isTextClickAction) {
+                addView(buildField("重试次数", retryCountInput))
+                addView(buildField("重试延迟(ms)", retryDelayInput))
+                addView(continuousRetryCheckBox)
+            }
         }
         val scrollContainer = ScrollView(this).apply {
             isFillViewport = true
@@ -823,7 +852,7 @@ class FloatingWindowService : LifecycleService() {
                 val endX = if (actionType == AutoClickActionType.Swipe) endXInput.text.toString().toIntOrNull() else null
                 val endY = if (actionType == AutoClickActionType.Swipe) endYInput.text.toString().toIntOrNull() else null
                 val delayMs = xInputToLong(delayInput, currentPoint.delayMs, min = 0L)
-                val touchMs = if (actionType.usesTouchDuration) {
+                val touchMs = if (actionType.usesTouchDuration || actionType == AutoClickActionType.TextClick) {
                     xInputToLong(touchInput, currentPoint.touchDurationMs, min = 1L)
                 } else {
                     currentPoint.touchDurationMs
@@ -853,7 +882,27 @@ class FloatingWindowService : LifecycleService() {
                     endY = boundedEnd?.y,
                     delayMs = delayMs,
                     touchDurationMs = touchMs,
-                    repeatCount = repeat
+                    repeatCount = repeat,
+                    targetText = if (actionType == AutoClickActionType.TextClick) {
+                        targetTextInput.text.toString()
+                    } else {
+                        null
+                    },
+                    textFindRetryCount = if (actionType == AutoClickActionType.TextClick) {
+                        retryCountInput.text.toString().toIntOrNull()?.coerceAtLeast(0) ?: currentPoint.textFindRetryCount
+                    } else {
+                        null
+                    },
+                    textFindRetryDelayMs = if (actionType == AutoClickActionType.TextClick) {
+                        xInputToLong(retryDelayInput, currentPoint.textFindRetryDelayMs, min = 0L)
+                    } else {
+                        null
+                    },
+                    continuousRetry = if (actionType == AutoClickActionType.TextClick) {
+                        continuousRetryCheckBox.isChecked
+                    } else {
+                        null
+                    }
                 )
                 val saveResult = AutoClickCoordinator.saveProfile()
                 val tip = if (saveResult.isSuccess) {
@@ -952,7 +1001,7 @@ class FloatingWindowService : LifecycleService() {
     }
 
     private fun showAddActionDialog() {
-        val labels = arrayOf("点击", "滑动", "Home", "Back", "多任务")
+        val labels = arrayOf("点击", "滑动", "Home", "Back", "多任务", "识别文字点击")
         val dialog = AlertDialog.Builder(this)
             .setTitle("添加动作")
             .setItems(labels) { _, which ->
@@ -961,6 +1010,7 @@ class FloatingWindowService : LifecycleService() {
                     2 -> AutoClickActionType.Home
                     3 -> AutoClickActionType.Back
                     4 -> AutoClickActionType.Recents
+                    5 -> AutoClickActionType.TextClick
                     else -> AutoClickActionType.Click
                 }
                 val point = AutoClickCoordinator.addAction(type)
@@ -1026,6 +1076,7 @@ class FloatingWindowService : LifecycleService() {
                                     AutoClickActionType.Home -> rawDuration.coerceAtLeast(1L)
                                     AutoClickActionType.Back -> rawDuration.coerceAtLeast(1L)
                                     AutoClickActionType.Recents -> rawDuration.coerceAtLeast(1L)
+                                    AutoClickActionType.TextClick -> rawDuration.coerceAtLeast(1L)
                                 }
                                 val recorded = AutoClickCoordinator.addRecordedAction(
                                     actionType = actionType,
@@ -1050,6 +1101,7 @@ class FloatingWindowService : LifecycleService() {
                                             AutoClickActionType.Home -> RECORDED_CLICK_REPLAY_DELAY_MS
                                             AutoClickActionType.Back -> RECORDED_CLICK_REPLAY_DELAY_MS
                                             AutoClickActionType.Recents -> RECORDED_CLICK_REPLAY_DELAY_MS
+                                            AutoClickActionType.TextClick -> RECORDED_CLICK_REPLAY_DELAY_MS
                                         }
                                         val replayed = AutoClickAccessibilityService.replayRecordedAction(
                                             point = recorded,

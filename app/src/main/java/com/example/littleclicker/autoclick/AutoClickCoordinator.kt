@@ -424,6 +424,10 @@ object AutoClickCoordinator {
         delayMs: Long? = null,
         touchDurationMs: Long? = null,
         repeatCount: Int? = null,
+        targetText: String? = null,
+        textFindRetryCount: Int? = null,
+        textFindRetryDelayMs: Long? = null,
+        continuousRetry: Boolean? = null,
     ) {
         updateProfile { current ->
             current.copy(
@@ -440,6 +444,7 @@ object AutoClickCoordinator {
                             AutoClickActionType.Home -> null
                             AutoClickActionType.Back -> null
                             AutoClickActionType.Recents -> null
+                            AutoClickActionType.TextClick -> null
                         }
                         val resolvedEndY = when (resolvedType) {
                             AutoClickActionType.Click -> null
@@ -447,6 +452,7 @@ object AutoClickCoordinator {
                             AutoClickActionType.Home -> null
                             AutoClickActionType.Back -> null
                             AutoClickActionType.Recents -> null
+                            AutoClickActionType.TextClick -> null
                         }
                         point.copy(
                             x = resolvedX,
@@ -456,7 +462,11 @@ object AutoClickCoordinator {
                             endY = resolvedEndY,
                             delayMs = delayMs?.coerceAtLeast(0L) ?: point.delayMs,
                             touchDurationMs = touchDurationMs?.coerceAtLeast(1L) ?: point.touchDurationMs,
-                            repeatCount = repeatCount?.coerceAtLeast(1) ?: point.repeatCount
+                            repeatCount = repeatCount?.coerceAtLeast(1) ?: point.repeatCount,
+                            targetText = targetText ?: point.targetText,
+                            textFindRetryCount = textFindRetryCount?.coerceAtLeast(0) ?: point.textFindRetryCount,
+                            textFindRetryDelayMs = textFindRetryDelayMs?.coerceAtLeast(0L) ?: point.textFindRetryDelayMs,
+                            continuousRetry = continuousRetry ?: point.continuousRetry
                         )
                     }
                 }
@@ -879,6 +889,7 @@ object AutoClickCoordinator {
                             AutoClickActionType.Home -> null
                             AutoClickActionType.Back -> null
                             AutoClickActionType.Recents -> null
+                            AutoClickActionType.TextClick -> null
                         },
                         endY = when (normalizedType) {
                             AutoClickActionType.Click -> null
@@ -886,10 +897,13 @@ object AutoClickCoordinator {
                             AutoClickActionType.Home -> null
                             AutoClickActionType.Back -> null
                             AutoClickActionType.Recents -> null
+                            AutoClickActionType.TextClick -> null
                         },
                         delayMs = point.delayMs.coerceAtLeast(0L),
                         touchDurationMs = point.touchDurationMs.coerceAtLeast(1L),
-                        repeatCount = point.repeatCount.coerceAtLeast(1)
+                        repeatCount = point.repeatCount.coerceAtLeast(1),
+                        textFindRetryCount = point.textFindRetryCount.coerceAtLeast(0),
+                        textFindRetryDelayMs = point.textFindRetryDelayMs.coerceAtLeast(0L)
                     )
                 },
                 updatedAt = System.currentTimeMillis()
@@ -940,6 +954,13 @@ object AutoClickCoordinator {
                 x = 0,
                 y = 0,
                 actionType = AutoClickActionType.Recents
+            )
+
+            AutoClickActionType.TextClick -> AutoClickPoint(
+                id = nextId,
+                x = 0,
+                y = 0,
+                actionType = AutoClickActionType.TextClick
             )
         }
     }

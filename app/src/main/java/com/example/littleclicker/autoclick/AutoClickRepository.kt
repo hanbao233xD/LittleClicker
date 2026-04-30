@@ -30,6 +30,10 @@ object AutoClickRepository {
         val delayMs: Long? = null,
         val touchDurationMs: Long? = null,
         val repeatCount: Int? = null,
+        val targetText: String? = null,
+        val textFindRetryCount: Int? = null,
+        val textFindRetryDelayMs: Long? = null,
+        val continuousRetry: Boolean? = null,
     )
 
     private data class AutoClickProfilePayload(
@@ -152,7 +156,11 @@ object AutoClickRepository {
                 },
                 delayMs = (point.delayMs ?: 200L).coerceAtLeast(0L),
                 touchDurationMs = (point.touchDurationMs ?: 50L).coerceAtLeast(1L),
-                repeatCount = (point.repeatCount ?: 1).coerceAtLeast(1)
+                repeatCount = (point.repeatCount ?: 1).coerceAtLeast(1),
+                targetText = point.targetText ?: "",
+                textFindRetryCount = (point.textFindRetryCount ?: DEFAULT_TEXT_FIND_RETRY_COUNT).coerceAtLeast(0),
+                textFindRetryDelayMs = (point.textFindRetryDelayMs ?: DEFAULT_TEXT_FIND_RETRY_DELAY_MS).coerceAtLeast(0L),
+                continuousRetry = point.continuousRetry ?: false
             )
         }
 
@@ -237,6 +245,7 @@ object AutoClickRepository {
             raw.equals("Recents", ignoreCase = true) ||
                 raw.equals("Recent", ignoreCase = true) ||
                 raw.equals("多任务", ignoreCase = true) -> AutoClickActionType.Recents
+            raw.equals("TextClick", ignoreCase = true) -> AutoClickActionType.TextClick
             else -> AutoClickActionType.Click
         }
     }

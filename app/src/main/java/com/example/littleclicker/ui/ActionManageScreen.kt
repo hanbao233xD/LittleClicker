@@ -3,6 +3,7 @@ package com.example.littleclicker.ui
 import android.app.AlertDialog
 import android.content.Context
 import android.text.InputType
+import android.widget.CheckBox
 import android.widget.EditText
 import android.widget.LinearLayout
 import android.widget.ScrollView
@@ -297,6 +298,20 @@ internal fun ActionManageScreen(onBack: () -> Unit) {
                                     color = MiuixTheme.colorScheme.onBackgroundVariant
                                 )
                             }
+                            if (point.actionType == AutoClickActionType.TextClick) {
+                                Text(
+                                    text = "目标文字：${point.targetText.ifBlank { "未设置" }}",
+                                    color = MiuixTheme.colorScheme.onBackgroundVariant
+                                )
+                                Text(
+                                    text = if (point.continuousRetry) {
+                                        "重试：持续重试"
+                                    } else {
+                                        "重试：${point.textFindRetryCount}次 / ${point.textFindRetryDelayMs}ms"
+                                    },
+                                    color = MiuixTheme.colorScheme.onBackgroundVariant
+                                )
+                            }
                         }
                     }
                 }
@@ -321,13 +336,36 @@ private fun showPointEditDialog(
     val touchInput = createNumberInput(context, latestPoint.touchDurationMs.toInt())
     val repeatInput = createNumberInput(context, latestPoint.repeatCount)
     val isSwipeAction = latestPoint.actionType == AutoClickActionType.Swipe
+    val isTextClickAction = latestPoint.actionType == AutoClickActionType.TextClick
     val usesScreenCoordinates = latestPoint.actionType.usesScreenCoordinates
     val usesTouchDuration = latestPoint.actionType.usesTouchDuration
+
+    val targetTextInput = EditText(context).apply {
+        setText(latestPoint.targetText)
+        hint = "输入要识别的文字"
+    }
+    val retryCountInput = createNumberInput(context, latestPoint.textFindRetryCount)
+    val retryDelayInput = createNumberInput(context, latestPoint.textFindRetryDelayMs.toInt())
+    val continuousRetryCheckBox = CheckBox(context).apply {
+        text = "持续重试（找到并点击后才执行下一步）"
+        isChecked = latestPoint.continuousRetry
+        setOnCheckedChangeListener { _, checked ->
+            retryCountInput.isEnabled = !checked
+            retryDelayInput.isEnabled = !checked
+        }
+    }
+    if (latestPoint.continuousRetry) {
+        retryCountInput.isEnabled = false
+        retryDelayInput.isEnabled = false
+    }
 
     val container = LinearLayout(context).apply {
         orientation = LinearLayout.VERTICAL
         setPadding(40, 30, 40, 10)
         addView(buildField(context, "动作类型", createReadOnlyInput(context, latestPoint.actionType.displayName)))
+        if (isTextClickAction) {
+            addView(buildField(context, "目标文字", targetTextInput))
+        }
         if (usesScreenCoordinates) {
             addView(buildField(context, "X 中心坐标", xInput))
             addView(buildField(context, "Y 中心坐标", yInput))
@@ -337,10 +375,15 @@ private fun showPointEditDialog(
             addView(buildField(context, "滑动结束Y", endYInput))
         }
         addView(buildField(context, "点击延迟(ms)", delayInput))
-        if (usesTouchDuration) {
+        if (usesTouchDuration || isTextClickAction) {
             addView(buildField(context, "触摸时长(ms)", touchInput))
         }
         addView(buildField(context, "重复次数", repeatInput))
+        if (isTextClickAction) {
+            addView(buildField(context, "重试次数", retryCountInput))
+            addView(buildField(context, "重试延迟(ms)", retryDelayInput))
+            addView(continuousRetryCheckBox)
+        }
     }
     val scrollContainer = ScrollView(context).apply {
         isFillViewport = true
@@ -393,12 +436,32 @@ private fun showPointEditDialog(
                 endX = safeEndX,
                 endY = safeEndY,
                 delayMs = xInputToLong(delayInput, currentPoint.delayMs, min = 0L),
-                touchDurationMs = if (actionType.usesTouchDuration) {
+                touchDurationMs = if (actionType.usesTouchDuration || actionType == AutoClickActionType.TextClick) {
                     xInputToLong(touchInput, currentPoint.touchDurationMs, min = 1L)
                 } else {
                     currentPoint.touchDurationMs
                 },
-                repeatCount = repeatInput.text.toString().toIntOrNull()?.coerceAtLeast(1) ?: currentPoint.repeatCount
+                repeatCount = repeatInput.text.toString().toIntOrNull()?.coerceAtLeast(1) ?: currentPoint.repeatCount,
+                targetText = if (actionType == AutoClickActionType.TextClick) {
+                    targetTextInput.text.toString()
+                } else {
+                    null
+                },
+                textFindRetryCount = if (actionType == AutoClickActionType.TextClick) {
+                    retryCountInput.text.toString().toIntOrNull()?.coerceAtLeast(0) ?: currentPoint.textFindRetryCount
+                } else {
+                    null
+                },
+                textFindRetryDelayMs = if (actionType == AutoClickActionType.TextClick) {
+                    xInputToLong(retryDelayInput, currentPoint.textFindRetryDelayMs, min = 0L)
+                } else {
+                    null
+                },
+                continuousRetry = if (actionType == AutoClickActionType.TextClick) {
+                    continuousRetryCheckBox.isChecked
+                } else {
+                    null
+                }
             )
             val saveResult = AutoClickCoordinator.saveProfile()
             val tip = if (saveResult.isSuccess) {
@@ -412,7 +475,7 @@ private fun showPointEditDialog(
 }
 
 private fun showAddActionDialog(context: Context) {
-    val labels = arrayOf("点击", "滑动", "Home", "Back", "多任务")
+    val labels = arrayOf("点击", "滑动", "Home", "Back", "多任务", "识别文字点击")
     AlertDialog.Builder(context)
         .setTitle("添加动作")
         .setItems(labels) { _, which ->
@@ -421,6 +484,7 @@ private fun showAddActionDialog(context: Context) {
                 2 -> AutoClickActionType.Home
                 3 -> AutoClickActionType.Back
                 4 -> AutoClickActionType.Recents
+                5 -> AutoClickActionType.TextClick
                 else -> AutoClickActionType.Click
             }
             val point = AutoClickCoordinator.addAction(type)
