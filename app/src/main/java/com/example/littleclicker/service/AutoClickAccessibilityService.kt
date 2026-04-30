@@ -6,11 +6,13 @@ import android.accessibilityservice.GestureDescription
 import android.graphics.Color
 import android.graphics.Path
 import android.graphics.PixelFormat
+import android.os.Build
 import android.view.Gravity
 import android.view.KeyEvent
 import android.view.View
 import android.view.WindowManager
 import android.view.accessibility.AccessibilityEvent
+import android.view.accessibility.AccessibilityNodeInfo
 import android.widget.TextView
 import android.widget.Toast
 import com.example.littleclicker.R
@@ -381,19 +383,92 @@ class AutoClickAccessibilityService : AccessibilityService() {
     private fun findNodeCenterByText(targetText: String): Pair<Int, Int>? {
         if (targetText.isBlank()) return null
         val root = rootInActiveWindow ?: return null
-        val nodes = root.findAccessibilityNodeInfosByText(targetText)
-        if (nodes.isNullOrEmpty()) {
-            root.recycle()
-            return null
+        try {
+            val systemNodes = try {
+                root.findAccessibilityNodeInfosByText(targetText)
+            } catch (_: Exception) {
+                null
+            }
+            val candidates = mutableListOf<Triple<Int, Int, Boolean>>()
+            if (!systemNodes.isNullOrEmpty()) {
+                for (node in systemNodes) {
+                    try {
+                        val rect = android.graphics.Rect()
+                        node.getBoundsInScreen(rect)
+                        if (rect.width() > 0 && rect.height() > 0) {
+                            val clickable = node.isClickable || findClickableAncestorCenter(node) != null
+                            candidates.add(Triple(rect.centerX(), rect.centerY(), clickable))
+                        }
+                    } catch (_: Exception) {
+                        continue
+                    }
+                }
+            }
+            if (candidates.isEmpty()) {
+                collectNodeCentersByText(root, targetText, candidates)
+            }
+            if (candidates.isEmpty()) return null
+            val best = candidates.firstOrNull { it.third } ?: candidates.first()
+            return best.first to best.second
+        } finally {
+            try { root.recycle() } catch (_: Exception) {}
         }
-        val node = nodes.firstOrNull { it.isVisibleToUser } ?: nodes.first()
-        val rect = android.graphics.Rect()
-        node.getBoundsInScreen(rect)
-        val centerX = rect.centerX()
-        val centerY = rect.centerY()
-        nodes.forEach { it.recycle() }
-        root.recycle()
-        return centerX to centerY
+    }
+
+    private fun findClickableAncestorCenter(node: AccessibilityNodeInfo): Pair<Int, Int>? {
+        var current = try { node.parent } catch (_: Exception) { null }
+        var depth = 0
+        while (current != null && depth < 20) {
+            try {
+                if (current.isClickable) {
+                    val rect = android.graphics.Rect()
+                    current.getBoundsInScreen(rect)
+                    if (rect.width() > 0 && rect.height() > 0) {
+                        return rect.centerX() to rect.centerY()
+                    }
+                }
+            } catch (_: Exception) {
+                break
+            }
+            val next = try { current.parent } catch (_: Exception) { null }
+            current = next
+            depth++
+        }
+        return null
+    }
+
+    private fun collectNodeCentersByText(
+        node: AccessibilityNodeInfo,
+        targetText: String,
+        result: MutableList<Triple<Int, Int, Boolean>>,
+    ) {
+        try {
+            val nodeText = try { node.text?.toString().orEmpty() } catch (_: Exception) { "" }
+            val contentDesc = try { node.contentDescription?.toString().orEmpty() } catch (_: Exception) { "" }
+            val hintText = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                try { node.hintText?.toString().orEmpty() } catch (_: Exception) { "" }
+            } else ""
+            val stateDesc = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+                try { node.stateDescription?.toString().orEmpty() } catch (_: Exception) { "" }
+            } else ""
+
+            val allTexts = listOf(nodeText, contentDesc, hintText, stateDesc)
+            if (allTexts.any { it.contains(targetText, ignoreCase = true) }) {
+                val rect = android.graphics.Rect()
+                node.getBoundsInScreen(rect)
+                if (rect.width() > 0 && rect.height() > 0) {
+                    val clickable = try { node.isClickable } catch (_: Exception) { false }
+                    result.add(Triple(rect.centerX(), rect.centerY(), clickable))
+                }
+            }
+
+            val childCount = try { node.childCount } catch (_: Exception) { 0 }
+            for (i in 0 until childCount) {
+                val child = try { node.getChild(i) } catch (_: Exception) { null } ?: continue
+                collectNodeCentersByText(child, targetText, result)
+            }
+        } catch (_: Exception) {
+        }
     }
 
     private fun replayRecordedAction(
