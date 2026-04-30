@@ -500,6 +500,12 @@ object AutoClickCoordinator {
         }
     }
 
+    fun updateRandomDelayMs(randomDelayMs: Long) {
+        updateProfile { current ->
+            current.copy(randomDelayMs = randomDelayMs.coerceAtLeast(0L))
+        }
+    }
+
     fun updateRecordingMode(recordingMode: AutoClickRecordingMode) {
         updateProfile { current ->
             current.copy(recordingMode = recordingMode)
@@ -860,6 +866,7 @@ object AutoClickCoordinator {
                 cycleCount = updated.cycleCount.coerceAtLeast(1),
                 loopIntervalDelayMs = updated.loopIntervalDelayMs.coerceAtLeast(0L),
                 clickRandomOffsetPx = updated.clickRandomOffsetPx.coerceAtLeast(0),
+                randomDelayMs = updated.randomDelayMs.coerceAtLeast(0L),
                 ntpServerHost = updated.ntpServerHost.ifBlank { DEFAULT_NTP_SERVER_HOST },
                 scheduleRuleHms = normalizeScheduleRuleHms(updated.scheduleRuleHms),
                 points = updated.points.map { point ->

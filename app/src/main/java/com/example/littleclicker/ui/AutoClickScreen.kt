@@ -243,9 +243,11 @@ internal fun AutoClickScreen(
         }
 
         item {
+            val accessibilityEnabled = statuses.any { it.title == "无障碍服务" && it.granted }
             PermissionStatusSummaryCard(
                 allReady = allPermissionsReady,
                 isDarkTheme = isDarkTheme,
+                accessibilityEnabled = accessibilityEnabled,
                 onRootClick = {
                     coroutineScope.launch {
                         val result = withContext(Dispatchers.IO) {
@@ -299,14 +301,14 @@ internal fun AutoClickScreen(
                                     return@SuperSwitch
                                 }
                                 FloatingWindowService.startAutoClickOverlay(context)
-                                Toast.makeText(context, "悬浮窗已开启（拖动小白条移动位置），配置完记得保存哦", Toast.LENGTH_SHORT).show()
+                                Toast.makeText(context, "悬浮窗已开启（拖动小白条移动位置）", Toast.LENGTH_SHORT).show()
                             } else {
                                 FloatingWindowService.stopAutoClickOverlay(context)
                                 Toast.makeText(context, "动作悬浮窗已关闭", Toast.LENGTH_SHORT).show()
                             }
                         },
-                        title = "动作悬浮窗开关",
-                        summary = "用于编辑动作与录制"
+                        title = "悬浮窗开关",
+                        summary = "从这里开始探索"
                     )
                     Button(
                         onClick = {
@@ -314,7 +316,7 @@ internal fun AutoClickScreen(
                         },
                         modifier = Modifier.fillMaxWidth()
                     ) {
-                        Text("动作管理")
+                        Text("参数设置")
                     }
                     val navigationEventOwner = rememberNavigationEventDispatcherOwner(parent = null)
                     CompositionLocalProvider(LocalNavigationEventDispatcherOwner provides navigationEventOwner) {
@@ -685,6 +687,7 @@ private fun Context.loadRandomAutoClickTip(): String {
 private fun PermissionStatusSummaryCard(
     allReady: Boolean,
     isDarkTheme: Boolean,
+    accessibilityEnabled: Boolean,
     onRootClick: () -> Unit,
 ) {
     val successBg = if (isDarkTheme) Color(0xFF1C3327) else Color(0xFFE9F8EE)
@@ -720,12 +723,14 @@ private fun PermissionStatusSummaryCard(
                 insideMargin = PaddingValues(0.dp),
                 textColor = if (allReady) successTint else errorTint
             )
-            Text(
-                text = "ROOT激活无障碍",
-                color = MiuixTheme.colorScheme.primary,
-                fontWeight = FontWeight.Bold,
-                modifier = Modifier.clickable(onClick = onRootClick)
-            )
+            if (!accessibilityEnabled) {
+                Text(
+                    text = "ROOT激活无障碍",
+                    color = MiuixTheme.colorScheme.primary,
+                    fontWeight = FontWeight.Bold,
+                    modifier = Modifier.clickable(onClick = onRootClick)
+                )
+            }
         }
     }
 }

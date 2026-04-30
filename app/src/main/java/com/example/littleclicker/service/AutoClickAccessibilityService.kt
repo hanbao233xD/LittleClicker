@@ -207,14 +207,16 @@ class AutoClickAccessibilityService : AccessibilityService() {
             AutoClickRunMode.RunOnce -> {
                 executePointSequence(
                     points = profile.points,
-                    clickRandomOffsetPx = profile.clickRandomOffsetPx
+                    clickRandomOffsetPx = profile.clickRandomOffsetPx,
+                    randomDelayMs = profile.randomDelayMs
                 )
             }
             AutoClickRunMode.LoopUntilStopped -> {
                 while (currentCoroutineContext().isActive) {
                     executePointSequence(
                         points = profile.points,
-                        clickRandomOffsetPx = profile.clickRandomOffsetPx
+                        clickRandomOffsetPx = profile.clickRandomOffsetPx,
+                        randomDelayMs = profile.randomDelayMs
                     )
                     ensureNotCancelled()
                     waitIfPaused()
@@ -230,6 +232,7 @@ class AutoClickAccessibilityService : AccessibilityService() {
     private suspend fun executePointSequence(
         points: List<AutoClickPoint>,
         clickRandomOffsetPx: Int,
+        randomDelayMs: Long,
     ) {
         for (point in points) {
             val safeRepeatCount = point.repeatCount.coerceAtLeast(1)
@@ -237,7 +240,13 @@ class AutoClickAccessibilityService : AccessibilityService() {
                 ensureNotCancelled()
                 waitIfPaused()
 
-                val delayMs = point.delayMs.coerceAtLeast(0L)
+                val baseDelayMs = point.delayMs.coerceAtLeast(0L)
+                val actualRandomDelay = if (randomDelayMs > 0L) {
+                    Random.nextLong(-randomDelayMs, randomDelayMs + 1)
+                } else {
+                    0L
+                }
+                val delayMs = (baseDelayMs + actualRandomDelay).coerceAtLeast(0L)
                 if (delayMs > 0L) {
                     delay(delayMs)
                 }

@@ -19,6 +19,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Delete
@@ -27,12 +28,16 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
@@ -40,6 +45,7 @@ import androidx.lifecycle.compose.LocalLifecycleOwner
 import com.example.littleclicker.autoclick.AutoClickActionType
 import com.example.littleclicker.autoclick.AutoClickCoordinator
 import com.example.littleclicker.autoclick.AutoClickPoint
+import com.example.littleclicker.autoclick.AutoClickRunMode
 import com.example.littleclicker.autoclick.displayName
 import com.example.littleclicker.autoclick.usesScreenCoordinates
 import com.example.littleclicker.autoclick.usesTouchDuration
@@ -50,6 +56,7 @@ import top.yukonga.miuix.kmp.basic.Icon
 import top.yukonga.miuix.kmp.basic.IconButton
 import top.yukonga.miuix.kmp.basic.Scaffold
 import top.yukonga.miuix.kmp.basic.Text
+import top.yukonga.miuix.kmp.basic.TextField as MiuixTextField
 import top.yukonga.miuix.kmp.basic.TopAppBar
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 
@@ -81,8 +88,8 @@ internal fun ActionManageScreen(onBack: () -> Unit) {
     Scaffold(
         topBar = {
             TopAppBar(
-                title = "动作管理",
-                largeTitle = "动作管理",
+                title = "参数设置",
+                largeTitle = "参数设置",
                 color = topBarColor,
                 navigationIcon = {
                     IconButton(onClick = onBack) {
@@ -95,6 +102,16 @@ internal fun ActionManageScreen(onBack: () -> Unit) {
             )
         }
     ) { innerPadding ->
+        var loopIntervalDelayInput by remember(profile.loopIntervalDelayMs, profile.runMode) {
+            mutableStateOf(profile.loopIntervalDelayMs.toString())
+        }
+        var clickRandomOffsetInput by remember(profile.clickRandomOffsetPx) {
+            mutableStateOf(profile.clickRandomOffsetPx.toString())
+        }
+        var randomDelayInput by remember(profile.randomDelayMs) {
+            mutableStateOf(profile.randomDelayMs.toString())
+        }
+
         LazyColumn(
             modifier = Modifier
                 .fillMaxSize()
@@ -111,9 +128,85 @@ internal fun ActionManageScreen(onBack: () -> Unit) {
             item {
                 Spacer(modifier = Modifier.height(6.dp))
                 Text(
-                    text = "可在这里添加、编辑和删除动作。动作悬浮窗中的改动也会同步到此处。",
+                    text = "可在这里设置运行参数，以及添加、编辑和删除动作。动作悬浮窗中的改动也会同步到此处。",
                     color = MiuixTheme.colorScheme.onBackgroundVariant
                 )
+            }
+
+            item {
+                Card(
+                    modifier = Modifier.fillMaxWidth(),
+                    cornerRadius = 20.dp,
+                    colors = CardDefaults.defaultColors(
+                        color = cardContainerColor,
+                        contentColor = MiuixTheme.colorScheme.onSurfaceContainer
+                    )
+                ) {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(14.dp),
+                        verticalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        Text("运行参数")
+                        if (profile.runMode == AutoClickRunMode.LoopUntilStopped) {
+                            MiuixTextField(
+                                value = loopIntervalDelayInput,
+                                onValueChange = { rawValue ->
+                                    val filtered = rawValue.filter { it.isDigit() }
+                                    loopIntervalDelayInput = filtered
+                                    val parsed = filtered.toLongOrNull() ?: return@MiuixTextField
+                                    if (parsed == profile.loopIntervalDelayMs) return@MiuixTextField
+                                    AutoClickCoordinator.updateLoopIntervalDelay(parsed)
+                                },
+                                modifier = Modifier.fillMaxWidth(),
+                                label = "每次循环延迟(ms)",
+                                singleLine = true,
+                                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number)
+                            )
+                            Text(
+                                text = "决定每次循环间隔多久",
+                                color = MiuixTheme.colorScheme.onBackgroundVariant
+                            )
+                        }
+                        MiuixTextField(
+                            value = clickRandomOffsetInput,
+                            onValueChange = { rawValue ->
+                                val filtered = rawValue.filter { it.isDigit() }
+                                clickRandomOffsetInput = filtered
+                                val parsed = filtered.toIntOrNull() ?: return@MiuixTextField
+                                if (parsed == profile.clickRandomOffsetPx) return@MiuixTextField
+                                AutoClickCoordinator.updateClickRandomOffsetPx(parsed)
+                            },
+                            modifier = Modifier.fillMaxWidth(),
+                            label = "点击随机偏移(px)",
+                            singleLine = true,
+                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number)
+                        )
+                        Text(
+                            text = "每次点击会在目标点周围随机偏移，0 表示关闭（反检测）",
+                            color = MiuixTheme.colorScheme.onBackgroundVariant
+                        )
+                        MiuixTextField(
+                            value = randomDelayInput,
+                            onValueChange = { rawValue ->
+                                val filtered = rawValue.filter { it.isDigit() }
+                                randomDelayInput = filtered
+                                val parsed = filtered.toLongOrNull() ?: return@MiuixTextField
+                                if (parsed == profile.randomDelayMs) return@MiuixTextField
+                                AutoClickCoordinator.updateRandomDelayMs(parsed)
+                            },
+                            modifier = Modifier.fillMaxWidth(),
+                            label = "随机加减延迟(ms)",
+                            singleLine = true,
+                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number)
+                        )
+                        Text(
+                            text = "执行每个动作时随机加减延迟，0 表示关闭",
+                            color = MiuixTheme.colorScheme.onBackgroundVariant
+                        )
+                    }
+                }
             }
             item {
                 Row(

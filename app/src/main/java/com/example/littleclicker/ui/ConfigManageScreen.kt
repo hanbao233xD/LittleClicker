@@ -13,7 +13,6 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Edit
@@ -31,7 +30,6 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
@@ -76,12 +74,6 @@ internal fun ConfigManageScreen(onBack: () -> Unit) {
     }
     var saveAsName by remember { mutableStateOf("") }
     var pendingDeleteId by remember { mutableStateOf<String?>(null) }
-    var loopIntervalDelayInput by remember(profile.loopIntervalDelayMs, profile.runMode) {
-        mutableStateOf(profile.loopIntervalDelayMs.toString())
-    }
-    var clickRandomOffsetInput by remember(profile.clickRandomOffsetPx) {
-        mutableStateOf(profile.clickRandomOffsetPx.toString())
-    }
     var editingProfileId by remember { mutableStateOf<String?>(null) }
     var editingProfileName by remember { mutableStateOf("") }
 
@@ -174,44 +166,6 @@ internal fun ConfigManageScreen(onBack: () -> Unit) {
                                 }
                             )
                         }
-                        if (profile.runMode == AutoClickRunMode.LoopUntilStopped) {
-                            MiuixTextField(
-                                value = loopIntervalDelayInput,
-                                onValueChange = { rawValue ->
-                                    val filtered = rawValue.filter { it.isDigit() }
-                                    loopIntervalDelayInput = filtered
-                                    val parsed = filtered.toLongOrNull() ?: return@MiuixTextField
-                                    if (parsed == profile.loopIntervalDelayMs) return@MiuixTextField
-                                    AutoClickCoordinator.updateLoopIntervalDelay(parsed)
-                                },
-                                modifier = Modifier.fillMaxWidth(),
-                                label = "每次循环延迟(ms)",
-                                singleLine = true,
-                                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number)
-                            )
-                            Text(
-                                text = "决定每次循环间隔多久",
-                                color = MiuixTheme.colorScheme.onBackgroundVariant
-                            )
-                        }
-                        MiuixTextField(
-                            value = clickRandomOffsetInput,
-                            onValueChange = { rawValue ->
-                                val filtered = rawValue.filter { it.isDigit() }
-                                clickRandomOffsetInput = filtered
-                                val parsed = filtered.toIntOrNull() ?: return@MiuixTextField
-                                if (parsed == profile.clickRandomOffsetPx) return@MiuixTextField
-                                AutoClickCoordinator.updateClickRandomOffsetPx(parsed)
-                            },
-                            modifier = Modifier.fillMaxWidth(),
-                            label = "点击随机偏移(px)",
-                            singleLine = true,
-                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number)
-                        )
-                        Text(
-                            text = "每次点击会在目标点周围随机偏移，0 表示关闭（反检测）",
-                            color = MiuixTheme.colorScheme.onBackgroundVariant
-                        )
                         Button(
                             onClick = {
                                 val result = AutoClickCoordinator.saveProfile()
