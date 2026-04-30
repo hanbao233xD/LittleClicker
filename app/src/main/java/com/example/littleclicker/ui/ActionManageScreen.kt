@@ -26,6 +26,7 @@ import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -47,6 +48,8 @@ import com.example.littleclicker.autoclick.AutoClickActionType
 import com.example.littleclicker.autoclick.AutoClickCoordinator
 import com.example.littleclicker.autoclick.AutoClickPoint
 import com.example.littleclicker.autoclick.AutoClickRunMode
+import androidx.navigationevent.compose.LocalNavigationEventDispatcherOwner
+import androidx.navigationevent.compose.rememberNavigationEventDispatcherOwner
 import com.example.littleclicker.autoclick.displayName
 import com.example.littleclicker.autoclick.usesScreenCoordinates
 import com.example.littleclicker.autoclick.usesTouchDuration
@@ -59,6 +62,7 @@ import top.yukonga.miuix.kmp.basic.Scaffold
 import top.yukonga.miuix.kmp.basic.Text
 import top.yukonga.miuix.kmp.basic.TextField as MiuixTextField
 import top.yukonga.miuix.kmp.basic.TopAppBar
+import top.yukonga.miuix.kmp.extra.WindowDropdown
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 
 @Composable
@@ -150,6 +154,28 @@ internal fun ActionManageScreen(onBack: () -> Unit) {
                         verticalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
                         Text("运行参数")
+                        val runModeItems = listOf("运行一次", "循环运行直至手动停止")
+                        val selectedRunModeIndex = when (profile.runMode) {
+                            AutoClickRunMode.RunOnce -> 0
+                            AutoClickRunMode.LoopUntilStopped -> 1
+                        }
+                        val navigationEventOwner = rememberNavigationEventDispatcherOwner(parent = null)
+                        CompositionLocalProvider(LocalNavigationEventDispatcherOwner provides navigationEventOwner) {
+                            WindowDropdown(
+                                items = runModeItems,
+                                selectedIndex = selectedRunModeIndex,
+                                title = "运行方式",
+                                summary = "运行时点按音量下键可强制停止",
+                                onSelectedIndexChange = { index ->
+                                    val mode = if (index == 0) {
+                                        AutoClickRunMode.RunOnce
+                                    } else {
+                                        AutoClickRunMode.LoopUntilStopped
+                                    }
+                                    AutoClickCoordinator.updateRunMode(mode)
+                                }
+                            )
+                        }
                         if (profile.runMode == AutoClickRunMode.LoopUntilStopped) {
                             MiuixTextField(
                                 value = loopIntervalDelayInput,
