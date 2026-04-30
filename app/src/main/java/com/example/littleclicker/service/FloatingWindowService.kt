@@ -94,6 +94,7 @@ import androidx.savedstate.setViewTreeSavedStateRegistryOwner
 import com.example.littleclicker.autoclick.AutoClickCoordinator
 import com.example.littleclicker.autoclick.AutoClickActionType
 import com.example.littleclicker.autoclick.AutoClickPoint
+import com.example.littleclicker.autoclick.AutoClickRecordingMode
 import com.example.littleclicker.autoclick.AutoClickRunState
 import com.example.littleclicker.autoclick.displayName
 import com.example.littleclicker.autoclick.usesScreenCoordinates
@@ -1042,7 +1043,32 @@ class FloatingWindowService : LifecycleService() {
                                         "已录制 $count.${recorded.actionType.displayName}",
                                         Toast.LENGTH_SHORT
                                     ).show()
-                                    // 互斥策略：录制期间禁止任何脚本执行，不触发穿透回放。
+                                    if (AutoClickCoordinator.profile.value.recordingMode == AutoClickRecordingMode.RecordAndPassThrough) {
+                                        val replayDelayMs = when (recorded.actionType) {
+                                            AutoClickActionType.Click -> RECORDED_CLICK_REPLAY_DELAY_MS
+                                            AutoClickActionType.Swipe -> RECORDED_SWIPE_REPLAY_DELAY_MS
+                                            AutoClickActionType.Home -> RECORDED_CLICK_REPLAY_DELAY_MS
+                                            AutoClickActionType.Back -> RECORDED_CLICK_REPLAY_DELAY_MS
+                                            AutoClickActionType.Recents -> RECORDED_CLICK_REPLAY_DELAY_MS
+                                        }
+                                        val replayed = AutoClickAccessibilityService.replayRecordedAction(
+                                            point = recorded,
+                                            triggerDelayMs = replayDelayMs,
+                                            allowWhenRecording = true
+                                        )
+                                        if (replayed) {
+                                            armRecordReplayPassThroughWindow(
+                                                triggerDelayMs = replayDelayMs,
+                                                touchDurationMs = recorded.touchDurationMs
+                                            )
+                                        } else {
+                                            Toast.makeText(
+                                                this@FloatingWindowService,
+                                                "动作已录制，自动模拟失败（请检查无障碍）",
+                                                Toast.LENGTH_SHORT
+                                            ).show()
+                                        }
+                                    }
                                 }
                             }
                         }

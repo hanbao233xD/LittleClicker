@@ -1037,3 +1037,21 @@
   - `./gradlew :app:assembleDebug --no-daemon` 通过。
   - `adb install -r app/build/outputs/apk/debug/app-debug.apk` 安装成功。
   - `adb logcat -c` 后执行 `adb shell monkey -p com.example.littleclicker -c android.intent.category.LAUNCHER 1` 可正常拉起应用；未检出 LittleClicker 崩溃日志。
+
+## 2026-04-30（修复录制穿透回放“自动模拟失败”误拦截）
+- 问题现象：
+  - 录制动作成功后，始终弹出“动作已录制，自动模拟失败（请检查无障碍）”。
+- 根因分析：
+  - `AutoClickAccessibilityService.replayRecordedAction(...)` 在“录制中”直接返回 `false`；
+  - 录制穿透模式本身就在录制过程中调用该回放入口，导致被互斥逻辑误拦截。
+- 修复内容：
+  - `AutoClickAccessibilityService`：
+    - `replayRecordedAction` 新增参数 `allowWhenRecording`；
+    - 仅当 `allowWhenRecording=false` 时才拦截录制态回放，保持默认互斥策略不变。
+  - `FloatingWindowService`：
+    - 录制穿透回放调用处显式传入 `allowWhenRecording = true`，允许该特定场景回放。
+- 验证结果：
+  - `./gradlew :app:compileDebugKotlin :app:testDebugUnitTest --no-daemon` 通过。
+  - `./gradlew :app:assembleDebug --no-daemon` 通过。
+  - `adb install -r app/build/outputs/apk/debug/app-debug.apk` 安装成功。
+  - `adb logcat -c` 后执行 `adb shell monkey -p com.example.littleclicker -c android.intent.category.LAUNCHER 1` 可正常拉起应用；未检出 LittleClicker 崩溃日志。

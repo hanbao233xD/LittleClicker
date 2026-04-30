@@ -318,8 +318,12 @@ class AutoClickAccessibilityService : AccessibilityService() {
         }
     }
 
-    private fun replayRecordedAction(point: AutoClickPoint, triggerDelayMs: Long): Boolean {
-        if (AutoClickCoordinator.recording.value.isRecording) {
+    private fun replayRecordedAction(
+        point: AutoClickPoint,
+        triggerDelayMs: Long,
+        allowWhenRecording: Boolean,
+    ): Boolean {
+        if (!allowWhenRecording && AutoClickCoordinator.recording.value.isRecording) {
             return false
         }
         val canReplay = synchronized(lock) { runnerJob?.isActive != true }
@@ -541,8 +545,9 @@ class AutoClickAccessibilityService : AccessibilityService() {
         fun replayRecordedAction(
             point: AutoClickPoint,
             triggerDelayMs: Long = RECORD_REPLAY_TRIGGER_DELAY_MS,
+            allowWhenRecording: Boolean = false,
         ): Boolean {
-            return instance?.replayRecordedAction(point, triggerDelayMs) ?: false
+            return instance?.replayRecordedAction(point, triggerDelayMs, allowWhenRecording) ?: false
         }
 
         fun start(profile: AutoClickProfile): Boolean = instance?.startExecution(profile) ?: false
