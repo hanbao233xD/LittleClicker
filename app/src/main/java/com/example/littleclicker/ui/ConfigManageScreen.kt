@@ -1,6 +1,14 @@
 package com.example.littleclicker.ui
 
+import android.Manifest
+import android.content.Intent
+import android.net.Uri
+import android.os.Build
+import android.os.Environment
+import android.provider.Settings
 import android.widget.Toast
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Arrangement
@@ -15,9 +23,12 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.Edit
+import androidx.compose.material.icons.filled.Share
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -30,10 +41,13 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.core.content.FileProvider
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import com.example.littleclicker.autoclick.AutoClickCoordinator
+import com.example.littleclicker.autoclick.AutoClickProfile
+import com.example.littleclicker.autoclick.AutoClickRepository
 import top.yukonga.miuix.kmp.basic.Button
 import top.yukonga.miuix.kmp.basic.ButtonDefaults
 import top.yukonga.miuix.kmp.basic.Card
@@ -45,9 +59,10 @@ import top.yukonga.miuix.kmp.basic.Text
 import top.yukonga.miuix.kmp.basic.TextField as MiuixTextField
 import top.yukonga.miuix.kmp.basic.TopAppBar
 import top.yukonga.miuix.kmp.theme.MiuixTheme
+import java.io.File
 
 @Composable
-internal fun ConfigManageScreen(onBack: () -> Unit) {
+internal fun ConfigManageScreen(onBack: () -> Unit, importUri: Uri? = null) {
     val context = LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current
 
@@ -67,6 +82,39 @@ internal fun ConfigManageScreen(onBack: () -> Unit) {
     var pendingDeleteId by remember { mutableStateOf<String?>(null) }
     var editingProfileId by remember { mutableStateOf<String?>(null) }
     var editingProfileName by remember { mutableStateOf("") }
+
+    val importJsonLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.GetContent()
+    ) { uri: Uri? ->
+        uri ?: return@rememberLauncherForActivityResult
+        importProfileFromUri(context, uri)
+    }
+
+    val storagePermissionLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.RequestPermission()
+    ) { granted ->
+        if (granted) {
+            importJsonLauncher.launch("application/json")
+        } else {
+            Toast.makeText(context, "需要存储权限才能导入配置文件", Toast.LENGTH_SHORT).show()
+        }
+    }
+
+    val manageStorageLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.StartActivityForResult()
+    ) {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R && Environment.isExternalStorageManager()) {
+            importJsonLauncher.launch("application/json")
+        } else {
+            Toast.makeText(context, "需要文件访问权限才能导入配置文件", Toast.LENGTH_SHORT).show()
+        }
+    }
+
+    LaunchedEffect(importUri) {
+        if (importUri != null) {
+            importProfileFromUri(context, importUri)
+        }
+    }
 
     DisposableEffect(lifecycleOwner) {
         val observer = LifecycleEventObserver { _, event ->
@@ -189,7 +237,7 @@ internal fun ConfigManageScreen(onBack: () -> Unit) {
                                 onClick = {
                                     val result = AutoClickCoordinator.saveAsEmptyProfile(saveAsName)
                                     result.onSuccess { saved ->
-                                        saveAsName = saved.name
+                                        if (saveAsName.isNotBlank()) saveAsName = saved.name
                                         Toast.makeText(context, "已保存为空配置：${saved.name}", Toast.LENGTH_SHORT).show()
                                     }.onFailure {
                                         Toast.makeText(context, it.message ?: "保存失败", Toast.LENGTH_SHORT).show()
@@ -203,7 +251,7 @@ internal fun ConfigManageScreen(onBack: () -> Unit) {
                                 onClick = {
                                     val result = AutoClickCoordinator.saveAsNewProfile(saveAsName)
                                     result.onSuccess { saved ->
-                                        saveAsName = saved.name
+                                        if (saveAsName.isNotBlank()) saveAsName = saved.name
                                         Toast.makeText(context, "已另存为：${saved.name}", Toast.LENGTH_SHORT).show()
                                     }.onFailure {
                                         Toast.makeText(context, it.message ?: "另存失败", Toast.LENGTH_SHORT).show()
@@ -226,8 +274,26 @@ internal fun ConfigManageScreen(onBack: () -> Unit) {
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Text("本地配置列表", fontWeight = FontWeight.Bold)
-                    Button(onClick = { AutoClickCoordinator.refreshProfiles() }) {
-                        Text("刷新")
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Button(onClick = {
+                            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+                                if (Environment.isExternalStorageManager()) {
+                                    importJsonLauncher.launch("application/json")
+                                } else {
+                                    val intent = Intent(Settings.ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION).apply {
+                                        data = Uri.parse("package:${context.packageName}")
+                                    }
+                                    manageStorageLauncher.launch(intent)
+                                }
+                            } else {
+                                storagePermissionLauncher.launch(Manifest.permission.READ_EXTERNAL_STORAGE)
+                            }
+                        }) {
+                            Text("导入")
+                        }
+                        Button(onClick = { AutoClickCoordinator.refreshProfiles() }) {
+                            Text("刷新")
+                        }
                     }
                 }
             }
@@ -266,6 +332,29 @@ internal fun ConfigManageScreen(onBack: () -> Unit) {
                                     fontWeight = FontWeight.SemiBold,
                                     modifier = Modifier.weight(1f)
                                 )
+                                IconButton(
+                                    onClick = { shareProfile(context, item) }
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Filled.Share,
+                                        contentDescription = "分享配置"
+                                    )
+                                }
+                                IconButton(
+                                    onClick = {
+                                        val result = exportProfileToDownloads(context, item)
+                                        result.onSuccess { file ->
+                                            Toast.makeText(context, "已保存到：${file.absolutePath}", Toast.LENGTH_LONG).show()
+                                        }.onFailure {
+                                            Toast.makeText(context, "导出失败：${it.message}", Toast.LENGTH_SHORT).show()
+                                        }
+                                    }
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Filled.Download,
+                                        contentDescription = "导出配置"
+                                    )
+                                }
                                 IconButton(
                                     onClick = {
                                         if (isEditingName) {
@@ -407,5 +496,57 @@ internal fun ConfigManageScreen(onBack: () -> Unit) {
                 Spacer(modifier = Modifier.height(12.dp))
             }
         }
+    }
+}
+
+private fun exportProfileToDownloads(context: android.content.Context, profile: AutoClickProfile): Result<File> {
+    return runCatching {
+        val downloadsDir = File(
+            Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS),
+            "Littleclicker"
+        )
+        downloadsDir.mkdirs()
+        val fileName = "${profile.name}.json"
+        val file = File(downloadsDir, fileName)
+        file.writeText(AutoClickRepository.profileToJson(profile))
+        file
+    }
+}
+
+private fun shareProfile(context: android.content.Context, profile: AutoClickProfile) {
+    runCatching {
+        val cacheDir = File(context.cacheDir, "shared_profiles")
+        cacheDir.mkdirs()
+        val fileName = "${profile.name}.json"
+        val file = File(cacheDir, fileName)
+        file.writeText(AutoClickRepository.profileToJson(profile))
+        val uri = FileProvider.getUriForFile(
+            context,
+            "${context.packageName}.fileprovider",
+            file
+        )
+        val shareIntent = Intent(Intent.ACTION_SEND).apply {
+            type = "application/json"
+            putExtra(Intent.EXTRA_STREAM, uri)
+            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+        }
+        context.startActivity(Intent.createChooser(shareIntent, "分享配置文件"))
+    }.onFailure {
+        Toast.makeText(context, "分享失败：${it.message}", Toast.LENGTH_SHORT).show()
+    }
+}
+
+private fun importProfileFromUri(context: android.content.Context, uri: Uri) {
+    runCatching {
+        val json = context.contentResolver.openInputStream(uri)?.bufferedReader()?.use { it.readText() }
+            ?: throw IllegalStateException("无法读取文件")
+        val result = AutoClickCoordinator.importProfile(json)
+        result.onSuccess { imported ->
+            Toast.makeText(context, "已导入配置：${imported.name}", Toast.LENGTH_SHORT).show()
+        }.onFailure { e ->
+            Toast.makeText(context, "导入失败：${e.message}", Toast.LENGTH_SHORT).show()
+        }
+    }.onFailure {
+        Toast.makeText(context, "读取文件失败：${it.message}", Toast.LENGTH_SHORT).show()
     }
 }
