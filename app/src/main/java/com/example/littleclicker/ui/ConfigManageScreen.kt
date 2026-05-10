@@ -9,6 +9,7 @@ import android.provider.Settings
 import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.annotation.RequiresApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Arrangement
@@ -499,17 +500,35 @@ internal fun ConfigManageScreen(onBack: () -> Unit, importUri: Uri? = null) {
     }
 }
 
+@RequiresApi(Build.VERSION_CODES.Q)
 private fun exportProfileToDownloads(context: android.content.Context, profile: AutoClickProfile): Result<File> {
     return runCatching {
-        val downloadsDir = File(
-            Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS),
-            "Littleclicker"
-        )
-        downloadsDir.mkdirs()
-        val fileName = "${profile.name}.json"
-        val file = File(downloadsDir, fileName)
-        file.writeText(AutoClickRepository.profileToJson(profile))
-        file
+        val resolver = context.contentResolver
+        val contentValues = android.content.ContentValues().apply {
+            // 设置文件名
+            put(android.provider.MediaStore.MediaColumns.DISPLAY_NAME, "${profile.name}.json")
+            // 设置文件类型
+            put(android.provider.MediaStore.MediaColumns.MIME_TYPE, "application/json")
+            // 指定存放到 Downloads 下的 Littleclicker 文件夹
+            put(android.provider.MediaStore.MediaColumns.RELATIVE_PATH, android.os.Environment.DIRECTORY_DOWNLOADS + "/Littleclicker")
+        }
+
+        // 插入文件并获取 Uri
+        val uri = resolver.insert(android.provider.MediaStore.Downloads.EXTERNAL_CONTENT_URI, contentValues)
+
+        if (uri != null) {
+            // 通过 Uri 打开输出流写入 JSON 数据
+            resolver.openOutputStream(uri)?.use { outputStream ->
+                val jsonString = AutoClickRepository.profileToJson(profile)
+                outputStream.write(jsonString.toByteArray())
+            }
+        } else {
+            throw Exception("创建文件失败啦")
+        }
+
+        // 为了兼容你原来的返回值类型，最后手动拼装一个 File 对象返回回去
+        val downloadsDir = File(android.os.Environment.getExternalStoragePublicDirectory(android.os.Environment.DIRECTORY_DOWNLOADS), "Littleclicker")
+        File(downloadsDir, "${profile.name}.json")
     }
 }
 

@@ -29,6 +29,7 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -1685,10 +1686,10 @@ private fun TargetBubble(
     val bubbleFillColor = if (isDarkTheme) Color(0xCC4D84FF) else Color(0xCC1976D2)
     val bubbleBorderColor = if (isDarkTheme) Color(0xFFDDE7FF) else Color.White
     val removeFillColor = if (isDarkTheme) Color(0xCCE35D5B) else Color(0xCCB00020)
-    val containerSize = scaledDp(76.dp, scaleFactor)
-    val centerSize = scaledDp(68.dp, scaleFactor)
-    val removeSize = scaledDp(20.dp, scaleFactor)
-    val centerBorder = scaledDp(2.dp, scaleFactor).coerceAtLeast(1.dp)
+    val containerSize = scaledDp(50.dp, scaleFactor)
+    val centerSize = scaledDp(45.dp, scaleFactor)
+    val removeSize = scaledDp(14.dp, scaleFactor)
+    val centerBorder = scaledDp(1.dp, scaleFactor).coerceAtLeast(1.dp)
     val removeBorder = scaledDp(1.dp, scaleFactor).coerceAtLeast(1.dp)
 
     Box(
@@ -1711,15 +1712,14 @@ private fun TargetBubble(
                 .align(Alignment.Center)
                 .size(centerSize)
                 .background(bubbleFillColor, CircleShape)
-                .border(centerBorder, bubbleBorderColor, CircleShape)
-                .padding(horizontal = scaledDp(1.dp, scaleFactor)),
+                .border(centerBorder, bubbleBorderColor, CircleShape),
             contentAlignment = Alignment.Center
         ) {
             AutoResizeSingleLineText(
                 text = label,
-                modifier = Modifier.fillMaxWidth(),
+                modifier = Modifier.fillMaxWidth(0.8f),
                 color = Color.White,
-                style = MaterialTheme.typography.bodyMedium.copy(fontSize = 42.sp),
+                style = MaterialTheme.typography.bodyMedium.copy(fontSize = 24.sp),
                 minFontSize = 5.sp,
                 textAlign = TextAlign.Center,
                 overflow = TextOverflow.Clip
@@ -1735,7 +1735,7 @@ private fun TargetBubble(
                     .clickable(onClick = onRemove),
                 contentAlignment = Alignment.Center
             ) {
-                Text("x", color = Color.White)
+                Text("x", color = Color.White, fontSize = 10.sp)
             }
         }
     }
