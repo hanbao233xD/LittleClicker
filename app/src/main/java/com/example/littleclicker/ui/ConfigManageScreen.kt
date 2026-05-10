@@ -35,6 +35,7 @@ import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import com.example.littleclicker.autoclick.AutoClickCoordinator
 import top.yukonga.miuix.kmp.basic.Button
+import top.yukonga.miuix.kmp.basic.ButtonDefaults
 import top.yukonga.miuix.kmp.basic.Card
 import top.yukonga.miuix.kmp.basic.CardDefaults
 import top.yukonga.miuix.kmp.basic.Icon
@@ -180,19 +181,39 @@ internal fun ConfigManageScreen(onBack: () -> Unit) {
                             singleLine = true,
                             label = "新配置名称（留空自动编号）"
                         )
-                        Button(
-                            onClick = {
-                                val result = AutoClickCoordinator.saveAsNewProfile(saveAsName)
-                                result.onSuccess { saved ->
-                                    saveAsName = saved.name
-                                    Toast.makeText(context, "已另存为：${saved.name}", Toast.LENGTH_SHORT).show()
-                                }.onFailure {
-                                    Toast.makeText(context, it.message ?: "另存失败", Toast.LENGTH_SHORT).show()
-                                }
-                            },
-                            modifier = Modifier.fillMaxWidth()
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
                         ) {
-                            Text("保存为新配置")
+                            Button(
+                                onClick = {
+                                    val result = AutoClickCoordinator.saveAsEmptyProfile(saveAsName)
+                                    result.onSuccess { saved ->
+                                        saveAsName = saved.name
+                                        Toast.makeText(context, "已保存为空配置：${saved.name}", Toast.LENGTH_SHORT).show()
+                                    }.onFailure {
+                                        Toast.makeText(context, it.message ?: "保存失败", Toast.LENGTH_SHORT).show()
+                                    }
+                                },
+                                modifier = Modifier.weight(1f)
+                            ) {
+                                Text("新建空配置")
+                            }
+                            Button(
+                                onClick = {
+                                    val result = AutoClickCoordinator.saveAsNewProfile(saveAsName)
+                                    result.onSuccess { saved ->
+                                        saveAsName = saved.name
+                                        Toast.makeText(context, "已另存为：${saved.name}", Toast.LENGTH_SHORT).show()
+                                    }.onFailure {
+                                        Toast.makeText(context, it.message ?: "另存失败", Toast.LENGTH_SHORT).show()
+                                    }
+                                },
+                                modifier = Modifier.weight(1f),
+                                colors = ButtonDefaults.buttonColorsPrimary()
+                            ) {
+                                Text("保存为新配置", color = Color.White)
+                            }
                         }
                     }
                 }

@@ -122,6 +122,32 @@ object AutoClickCoordinator {
         }
     }
 
+    fun saveAsEmptyProfile(name: String): Result<AutoClickProfile> {
+        val context = appContext ?: return Result.failure(IllegalStateException("Coordinator not initialized"))
+        val base = _profile.value
+        val now = System.currentTimeMillis()
+        val currentProfiles = AutoClickRepository.listProfiles(context)
+        val newProfile = base.copy(
+            id = generateProfileId(now),
+            name = name.ifBlank { nextDefaultProfileName(currentProfiles) },
+            points = emptyList(),
+            startAtMillis = null,
+            updatedAt = now
+        )
+
+        return runCatching {
+            persistProfileToStorage(context, newProfile, makeActive = true)
+            _profile.value = newProfile
+            refreshProfiles()
+            refreshTimeSyncServerFromProfile()
+            _runtime.value = AutoClickRuntime(
+                state = AutoClickRunState.Idle,
+                message = "已保存为空配置：${newProfile.name}"
+            )
+            newProfile
+        }
+    }
+
     fun deleteProfile(profileId: String): Result<AutoClickProfile> {
         val context = appContext ?: return Result.failure(IllegalStateException("Coordinator not initialized"))
 
