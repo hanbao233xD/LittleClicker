@@ -1626,6 +1626,7 @@ private fun FloatingPanel(
                         label = if (isRecording) "停" else "录",
                         contentDescription = if (isRecording) "停止录制" else "录制",
                         onClick = onToggleRecord,
+                        isDarkTheme = isDarkTheme,
                         scaleFactor = scaleFactor
                     )
                     PanelActionButton(
