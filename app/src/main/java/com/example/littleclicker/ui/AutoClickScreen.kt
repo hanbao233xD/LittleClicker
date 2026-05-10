@@ -308,7 +308,7 @@ internal fun AutoClickScreen(
                             }
                         },
                         title = "悬浮窗开关",
-                        summary = "从这里开始探索"
+                        summary = "从这里开始探索（点击小白条放大/缩小，长按移动位置）"
                     )
                     Button(
                         onClick = {

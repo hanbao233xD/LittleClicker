@@ -62,6 +62,7 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.drawWithContent
@@ -233,6 +234,10 @@ class FloatingWindowService : LifecycleService() {
                         runMessage = runtime.message,
                         isRecording = recording.isRecording,
                         isLayoutLocked = profile.layoutLocked,
+                        isCollapsed = profile.panelCollapsed,
+                        onToggleCollapse = {
+                            AutoClickCoordinator.updatePanelCollapsed(!profile.panelCollapsed)
+                        },
                         onSizeChanged = { size ->
                             panelSize = size
                             updatePanelOffset(panelOffset)
@@ -1537,6 +1542,8 @@ private fun FloatingPanel(
     runMessage: String?,
     isRecording: Boolean,
     isLayoutLocked: Boolean,
+    isCollapsed: Boolean,
+    onToggleCollapse: () -> Unit,
     onSizeChanged: (IntSize) -> Unit,
     onDrag: (IntOffset) -> Unit,
     onToggleRun: () -> Unit,
@@ -1576,6 +1583,11 @@ private fun FloatingPanel(
                     .fillMaxWidth()
                     .height(handleHeight)
                     .background(panelHandleColor, RoundedCornerShape(handleCorner))
+                    .pointerInput(isLayoutLocked) {
+                        detectTapGestures(
+                            onTap = { onToggleCollapse() }
+                        )
+                    }
                     .then(
                         if (isLayoutLocked) {
                             Modifier
@@ -1609,34 +1621,35 @@ private fun FloatingPanel(
                     isDarkTheme = isDarkTheme,
                     scaleFactor = scaleFactor
                 )
-                PanelActionButton(
-                    label = if (isRecording) "停" else "录",
-                    contentDescription = if (isRecording) "停止录制" else "录制",
-                    onClick = onToggleRecord,
-                    isDarkTheme = isDarkTheme,
-                    scaleFactor = scaleFactor
-                )
-                PanelActionButton(
-                    icon = Icons.Filled.Add,
-                    contentDescription = "添加动作",
-                    onClick = onAddAction,
-                    isDarkTheme = isDarkTheme,
-                    scaleFactor = scaleFactor
-                )
-                PanelActionButton(
-                    icon = Icons.Filled.Delete,
-                    contentDescription = "删除最新动作",
-                    onClick = onDeleteLatest,
-                    isDarkTheme = isDarkTheme,
-                    scaleFactor = scaleFactor
-                )
-                PanelActionButton(
-                    icon = if (isLayoutLocked) Icons.Filled.Lock else Icons.Filled.LockOpen,
-                    contentDescription = if (isLayoutLocked) "布局已锁定，点击解锁" else "布局未锁定，点击锁定",
-                    onClick = onToggleLayoutLock,
-                    isDarkTheme = isDarkTheme,
-                    scaleFactor = scaleFactor
-                )
+                if (!isCollapsed) {
+                    PanelActionButton(
+                        label = if (isRecording) "停" else "录",
+                        contentDescription = if (isRecording) "停止录制" else "录制",
+                        onClick = onToggleRecord,
+                        scaleFactor = scaleFactor
+                    )
+                    PanelActionButton(
+                        icon = Icons.Filled.Add,
+                        contentDescription = "添加动作",
+                        onClick = onAddAction,
+                        isDarkTheme = isDarkTheme,
+                        scaleFactor = scaleFactor
+                    )
+                    PanelActionButton(
+                        icon = Icons.Filled.Delete,
+                        contentDescription = "删除最新动作",
+                        onClick = onDeleteLatest,
+                        isDarkTheme = isDarkTheme,
+                        scaleFactor = scaleFactor
+                    )
+                    PanelActionButton(
+                        icon = if (isLayoutLocked) Icons.Filled.Lock else Icons.Filled.LockOpen,
+                        contentDescription = if (isLayoutLocked) "布局已锁定，点击解锁" else "布局未锁定，点击锁定",
+                        onClick = onToggleLayoutLock,
+                        isDarkTheme = isDarkTheme,
+                        scaleFactor = scaleFactor
+                    )
+                }
                 PanelActionButton(
                     icon = Icons.Filled.Close,
                     contentDescription = "关闭悬浮窗",
@@ -1644,7 +1657,7 @@ private fun FloatingPanel(
                     isDarkTheme = isDarkTheme,
                     scaleFactor = scaleFactor
                 )
-                if (isLayoutLocked) {
+                if (!isCollapsed && isLayoutLocked) {
                     Text(
                         text = "布局已锁定",
                         color = Color(0xFFFF3B30),

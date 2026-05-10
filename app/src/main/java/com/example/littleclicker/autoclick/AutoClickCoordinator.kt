@@ -492,6 +492,12 @@ object AutoClickCoordinator {
         }
     }
 
+    fun updatePanelCollapsed(collapsed: Boolean) {
+        updateProfile { current ->
+            current.copy(panelCollapsed = collapsed)
+        }
+    }
+
     fun updateRunMode(runMode: AutoClickRunMode) {
         updateProfile { current ->
             current.copy(runMode = runMode)
