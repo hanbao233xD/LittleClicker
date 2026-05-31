@@ -1,5 +1,7 @@
 *.iml
-.gradle
+/.gradle
+/.idea
+/.agents
 /local.properties
 /.idea/caches
 /.idea/libraries
@@ -22,3 +24,4 @@ signing.properties
 .env
 .env.*
 !.env.example
+*.log
