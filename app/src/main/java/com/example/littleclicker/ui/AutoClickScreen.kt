@@ -206,7 +206,7 @@ internal fun AutoClickScreen(
             val titleIconSize = with(density) { titleFontSize.toDp() }
             Row(
                 verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                horizontalArrangement = Arrangement.spacedBy(4.dp)
             ) {
                 AndroidView(
                     modifier = Modifier.size(titleIconSize),
@@ -458,7 +458,7 @@ private fun NoticeBannerCard(
             contentScale = ContentScale.Fit,
             modifier = Modifier
                 .fillMaxSize()
-                .clip(RoundedCornerShape(6.dp))
+                .clip(RoundedCornerShape(8.dp))
         )
     }
 }
@@ -498,37 +498,44 @@ private fun NoticeBannerCarousel(
             ),
             insideMargin = PaddingValues(0.dp)
         ) {
-            HorizontalPager(
-                state = pagerState,
-                modifier = Modifier.fillMaxSize(),
-                userScrollEnabled = banners.size > 1
-            ) { page ->
-                NoticeBannerCard(
-                    noticeInfo = banners[page],
-                    onClick = { onClick(banners[page]) }
-                )
-            }
-        }
-
-        if (banners.size > 1) {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.Center
-            ) {
-                repeat(banners.size) { index ->
-                    Box(
-                        modifier = Modifier
-                            .padding(horizontal = 4.dp)
-                            .size(if (index == pagerState.currentPage) 18.dp else 6.dp, 6.dp)
-                            .clip(CircleShape)
-                            .background(
-                                if (index == pagerState.currentPage) {
-                                    MiuixTheme.colorScheme.primary
-                                } else {
-                                    MiuixTheme.colorScheme.onBackgroundVariant.copy(alpha = 0.28f)
-                                }
-                            )
+            Box(modifier = Modifier.fillMaxSize()) {
+                HorizontalPager(
+                    state = pagerState,
+                    modifier = Modifier.fillMaxSize(),
+                    userScrollEnabled = banners.size > 1
+                ) { page ->
+                    NoticeBannerCard(
+                        noticeInfo = banners[page],
+                        onClick = { onClick(banners[page]) }
                     )
+                }
+
+                if (banners.size > 1) {
+                    Row(
+                        modifier = Modifier
+                            .align(Alignment.TopCenter)
+                            .padding(top = 8.dp)
+                            .clip(RoundedCornerShape(999.dp))
+                            .background(Color.Black.copy(alpha = 0.14f))
+                            .padding(horizontal = 8.dp, vertical = 6.dp),
+                        horizontalArrangement = Arrangement.Center
+                    ) {
+                        repeat(banners.size) { index ->
+                            Box(
+                                modifier = Modifier
+                                    .padding(horizontal = 4.dp)
+                                    .size(if (index == pagerState.currentPage) 18.dp else 6.dp, 6.dp)
+                                    .clip(CircleShape)
+                                    .background(
+                                        if (index == pagerState.currentPage) {
+                                            Color.White
+                                        } else {
+                                            Color.White.copy(alpha = 0.45f)
+                                        }
+                                    )
+                            )
+                        }
+                    }
                 }
             }
         }
