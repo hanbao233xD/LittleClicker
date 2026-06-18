@@ -23,7 +23,7 @@ set "APK_SRC=%~dp0app\build\outputs\apk\release\app-release.apk"
 set "AAB_SRC=%~dp0app\build\outputs\bundle\release\app-release.aab"
 set "APK_DST=%TARGET_DIR%\LittleClicker.apk"
 set "AAB_DST=%TARGET_DIR%\app-release.aab"
-set "HOMEPAGE_APK_DST=F:\Documents\GitHub\HomePage\littleclicker\apk\LittleClicker.apk"
+set "HOMEPAGE_APK_DST=D:\Documents\GitHub\HomePage\littleclicker\apk\LittleClicker.apk"
 
 if not exist "%APK_SRC%" (
     echo APK not found: %APK_SRC%
@@ -47,7 +47,7 @@ echo [2/5] Copied APK to: %APK_DST%
 echo [3/5] Copied AAB to: %AAB_DST%
 echo [4/5] Copied APK to: %HOMEPAGE_APK_DST%
 
-set "HOMEPAGE_REPO=F:\Documents\GitHub\HomePage"
+set "HOMEPAGE_REPO=D:\Documents\GitHub\HomePage"
 set "HOMEPAGE_REL_APK=littleclicker/apk/LittleClicker.apk"
 for /f %%i in ('powershell -NoProfile -ExecutionPolicy Bypass -Command "Get-Date -Format yyyy-MM-dd_HH-mm-ss"') do set "COMMIT_TIME=%%i"
 for /f %%i in ('git -C "%HOMEPAGE_REPO%" rev-parse --abbrev-ref HEAD') do set "HOMEPAGE_BRANCH=%%i"
