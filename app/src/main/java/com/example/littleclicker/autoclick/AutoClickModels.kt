@@ -20,6 +20,7 @@ const val DEFAULT_NTP_SERVER_HOST = "ntp.aliyun.com"
 const val DEFAULT_LOOP_INTERVAL_DELAY_MS = 200L
 const val DEFAULT_CLICK_RANDOM_OFFSET_PX = 6
 const val DEFAULT_RANDOM_DELAY_MS = 10L
+const val DEFAULT_SCHEDULE_ADVANCE_MS = 0L
 const val DEFAULT_TEXT_FIND_RETRY_COUNT = 3
 const val DEFAULT_TEXT_FIND_RETRY_DELAY_MS = 500L
 
@@ -36,6 +37,7 @@ data class AutoClickProfile(
     val randomDelayMs: Long = DEFAULT_RANDOM_DELAY_MS,
     val recordingMode: AutoClickRecordingMode = AutoClickRecordingMode.RecordAndPassThrough,
     val ntpServerHost: String = DEFAULT_NTP_SERVER_HOST,
+    val scheduleAdvanceMs: Long = DEFAULT_SCHEDULE_ADVANCE_MS,
     val scheduleRuleHms: String? = null,
     val startAtMillis: Long? = null,
     val updatedAt: Long = System.currentTimeMillis(),

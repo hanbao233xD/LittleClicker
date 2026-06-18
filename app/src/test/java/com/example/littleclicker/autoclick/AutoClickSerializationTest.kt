@@ -24,6 +24,7 @@ class AutoClickSerializationTest {
             runMode = AutoClickRunMode.LoopUntilStopped,
             clickRandomOffsetPx = 9,
             ntpServerHost = "time.google.com",
+            scheduleAdvanceMs = 120L,
             scheduleRuleHms = "11:22:33",
             startAtMillis = 1_735_000_000_000,
             updatedAt = 1_735_100_000_000
@@ -40,6 +41,7 @@ class AutoClickSerializationTest {
         assertEquals(profile.runMode, restored.runMode)
         assertEquals(profile.clickRandomOffsetPx, restored.clickRandomOffsetPx)
         assertEquals(profile.ntpServerHost, restored.ntpServerHost)
+        assertEquals(profile.scheduleAdvanceMs, restored.scheduleAdvanceMs)
         assertEquals(profile.scheduleRuleHms, restored.scheduleRuleHms)
         assertEquals(profile.startAtMillis, restored.startAtMillis)
     }
@@ -62,7 +64,50 @@ class AutoClickSerializationTest {
         assertFalse(restored.layoutLocked)
         assertEquals(DEFAULT_CLICK_RANDOM_OFFSET_PX, restored.clickRandomOffsetPx)
         assertEquals(DEFAULT_NTP_SERVER_HOST, restored.ntpServerHost)
+        assertEquals(DEFAULT_SCHEDULE_ADVANCE_MS, restored.scheduleAdvanceMs)
         assertNull(restored.scheduleRuleHms)
+    }
+
+    @Test
+    fun scheduleAtHms_appliesScheduleAdvanceMs() {
+        AutoClickCoordinator.updateScheduleAdvanceMs(100L)
+        val nowMillis = AutoClickCoordinator.currentAlignedNowMillis()
+        val baseToday = Calendar.getInstance().apply {
+            timeInMillis = nowMillis
+        }
+        var targetHour = -1
+        var targetMinute = -1
+        var targetSecond = -1
+        var expectedTarget = -1L
+        for (offset in 1..3_600) {
+            val fromNow = Calendar.getInstance().apply {
+                timeInMillis = nowMillis + offset * 1_000L
+            }
+            val selectedAt = Calendar.getInstance().apply {
+                timeInMillis = baseToday.timeInMillis
+                set(Calendar.HOUR_OF_DAY, fromNow.get(Calendar.HOUR_OF_DAY))
+                set(Calendar.MINUTE, fromNow.get(Calendar.MINUTE))
+                set(Calendar.SECOND, fromNow.get(Calendar.SECOND))
+                set(Calendar.MILLISECOND, 0)
+            }.timeInMillis
+            val candidateTarget = selectedAt - 100L
+            if (candidateTarget > nowMillis) {
+                targetHour = fromNow.get(Calendar.HOUR_OF_DAY)
+                targetMinute = fromNow.get(Calendar.MINUTE)
+                targetSecond = fromNow.get(Calendar.SECOND)
+                expectedTarget = candidateTarget
+                break
+            }
+        }
+        assertTrue(targetHour >= 0)
+
+        val result = AutoClickCoordinator.scheduleAtHms(targetHour, targetMinute, targetSecond)
+
+        assertFalse(result.rolledToNextDay)
+        assertEquals(expectedTarget, result.scheduledAtMillis)
+        assertEquals(expectedTarget, AutoClickCoordinator.profile.value.startAtMillis)
+        AutoClickCoordinator.clearScheduleTime()
+        AutoClickCoordinator.updateScheduleAdvanceMs(0L)
     }
 
     @Test

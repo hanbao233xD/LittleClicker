@@ -1,6 +1,18 @@
 # LittleClicker 实现记录
 
-最后更新：2026-05-31
+最后更新：2026-06-18
+
+## 2026-06-18（定时支持提前毫秒执行）
+- 需求实现：
+  - 在“选择时间（hh:mm:ss）”弹窗底部新增“提前”毫秒输入，布局为左侧文字、右侧输入框、末尾 `ms` 单位；
+  - 默认值为 `0`，修改后立即自动保存到当前配置；
+  - 设定 `hh:mm:ss` 后，真实触发时间改为“设定整秒时间 - 提前毫秒”。
+- 代码改动：
+  - `AutoClickProfile` / `AutoClickRepository`：新增 `scheduleAdvanceMs` 字段与 JSON 兼容回填，旧配置缺失该字段时默认使用 `0`；
+  - `AutoClickCoordinator`：新增 `updateScheduleAdvanceMs(...)`，并调整 `scheduleAtHms(...)` 的目标时间计算逻辑；
+  - `AutoClickScreen.showHmsPickerDialog(...)`：在时间选择弹窗中追加提前毫秒输入，确认时一并写入配置并调用 `saveProfile()` 持久化。
+- 测试补充：
+  - 扩展 `AutoClickSerializationTest`，覆盖 `scheduleAdvanceMs` round-trip、旧 JSON 默认值、提前毫秒生效分支。
 
 ## 2026-05-31（README 宣传图与项目介绍完善）
 - 文档更新：

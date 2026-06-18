@@ -11,6 +11,7 @@ import android.widget.EditText
 import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.NumberPicker
+import android.widget.TextView
 import android.widget.Toast
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
@@ -373,7 +374,10 @@ internal fun AutoClickScreen(
                     showHmsPickerDialog(
                         context = context,
                         initialMillis = nowAlignedMillis,
-                        onSelected = { hour, minute, second ->
+                        initialAdvanceMs = profile.scheduleAdvanceMs,
+                        onSelected = { hour, minute, second, advanceMs ->
+                            AutoClickCoordinator.updateScheduleAdvanceMs(advanceMs)
+                            AutoClickCoordinator.saveProfile()
                             val scheduleResult = AutoClickCoordinator.scheduleAtHms(hour, minute, second)
                             val hmsLabel = String.format("%02d:%02d:%02d", hour, minute, second)
                             val baseTip = if (scheduleResult.rolledToNextDay) {
@@ -436,7 +440,7 @@ private fun NoticeBannerCard(
     val bannerBitmap = remember(noticeInfo.imageFilePath) {
         BitmapFactory.decodeFile(noticeInfo.imageFilePath)?.asImageBitmap()
     } ?: return
-    val outerShape = RoundedCornerShape(8.dp)
+    val outerShape = RoundedCornerShape(15.dp)
 
     Box(
         modifier = Modifier
@@ -458,7 +462,7 @@ private fun NoticeBannerCard(
             contentScale = ContentScale.Fit,
             modifier = Modifier
                 .fillMaxSize()
-                .clip(RoundedCornerShape(8.dp))
+                .clip(RoundedCornerShape(15.dp))
         )
     }
 }
@@ -753,7 +757,8 @@ private fun showNtpServerConfigDialog(
 private fun showHmsPickerDialog(
     context: Context,
     initialMillis: Long,
-    onSelected: (Int, Int, Int) -> Unit,
+    initialAdvanceMs: Long,
+    onSelected: (Int, Int, Int, Long) -> Unit,
 ) {
     val calendar = Calendar.getInstance().apply { timeInMillis = initialMillis }
     val hourPicker = NumberPicker(context).apply {
@@ -774,13 +779,46 @@ private fun showHmsPickerDialog(
         value = 0
         setFormatter { String.format("%02d", it) }
     }
+    val advanceInput = EditText(context).apply {
+        inputType = InputType.TYPE_CLASS_NUMBER
+        setText(initialAdvanceMs.coerceAtLeast(0L).toString())
+        setSelection(text?.length ?: 0)
+        hint = "0"
+    }
 
-    val container = LinearLayout(context).apply {
+    val pickerRow = LinearLayout(context).apply {
         orientation = LinearLayout.HORIZONTAL
-        setPadding(40, 20, 40, 10)
         addView(hourPicker, LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f))
         addView(minutePicker, LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f))
         addView(secondPicker, LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f))
+    }
+    val advanceLabel = TextView(context).apply {
+        text = "提前"
+        textSize = 16f
+    }
+    val advanceUnit = TextView(context).apply {
+        text = "ms"
+        textSize = 16f
+    }
+    val advanceRow = LinearLayout(context).apply {
+        orientation = LinearLayout.HORIZONTAL
+        gravity = android.view.Gravity.CENTER_VERTICAL
+        setPadding(0, 24, 0, 0)
+        addView(advanceLabel)
+        addView(
+            advanceInput,
+            LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f).apply {
+                marginStart = 24
+                marginEnd = 16
+            }
+        )
+        addView(advanceUnit)
+    }
+    val container = LinearLayout(context).apply {
+        orientation = LinearLayout.VERTICAL
+        setPadding(40, 20, 40, 10)
+        addView(pickerRow, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT))
+        addView(advanceRow, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT))
     }
 
     AlertDialog.Builder(context)
@@ -788,7 +826,11 @@ private fun showHmsPickerDialog(
         .setView(container)
         .setNegativeButton("取消", null)
         .setPositiveButton("确认") { _, _ ->
-            onSelected(hourPicker.value, minutePicker.value, secondPicker.value)
+            val advanceMs = advanceInput.text?.toString()
+                ?.filter { it.isDigit() }
+                ?.toLongOrNull()
+                ?: 0L
+            onSelected(hourPicker.value, minutePicker.value, secondPicker.value, advanceMs)
         }
         .show()
 }

@@ -599,6 +599,12 @@ object AutoClickCoordinator {
         }
     }
 
+    fun updateScheduleAdvanceMs(scheduleAdvanceMs: Long) {
+        updateProfile { current ->
+            current.copy(scheduleAdvanceMs = scheduleAdvanceMs.coerceAtLeast(0L))
+        }
+    }
+
     fun updateRecordingMode(recordingMode: AutoClickRecordingMode) {
         updateProfile { current ->
             current.copy(recordingMode = recordingMode)
@@ -684,6 +690,7 @@ object AutoClickCoordinator {
         val safeSecond = second.coerceIn(0, 59)
         val rule = formatHms(safeHour, safeMinute, safeSecond)
         val now = currentAlignedNowMillis()
+        val advanceMs = _profile.value.scheduleAdvanceMs.coerceAtLeast(0L)
         val targetCalendar = Calendar.getInstance().apply {
             timeInMillis = now
             set(Calendar.HOUR_OF_DAY, safeHour)
@@ -691,13 +698,13 @@ object AutoClickCoordinator {
             set(Calendar.SECOND, safeSecond)
             set(Calendar.MILLISECOND, 0)
         }
-        val rolledToNextDay = if (targetCalendar.timeInMillis <= now) {
+        var rolledToNextDay = false
+        var target = targetCalendar.timeInMillis - advanceMs
+        while (target <= now) {
             targetCalendar.add(Calendar.DAY_OF_YEAR, 1)
-            true
-        } else {
-            false
+            rolledToNextDay = true
+            target = targetCalendar.timeInMillis - advanceMs
         }
-        val target = targetCalendar.timeInMillis
 
         updateProfile { current ->
             current.copy(
@@ -961,6 +968,7 @@ object AutoClickCoordinator {
                 clickRandomOffsetPx = updated.clickRandomOffsetPx.coerceAtLeast(0),
                 randomDelayMs = updated.randomDelayMs.coerceAtLeast(0L),
                 ntpServerHost = updated.ntpServerHost.ifBlank { DEFAULT_NTP_SERVER_HOST },
+                scheduleAdvanceMs = updated.scheduleAdvanceMs.coerceAtLeast(0L),
                 scheduleRuleHms = normalizeScheduleRuleHms(updated.scheduleRuleHms),
                 points = updated.points.map { point ->
                     val normalizedType = point.actionType

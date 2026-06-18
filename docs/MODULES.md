@@ -1,6 +1,6 @@
 # LittleClicker 模块说明
 
-最后更新：2026-04-05
+最后更新：2026-06-18
 
 ## 1. 构建模块（Gradle）
 - 作用：管理 Android App 编译、依赖与 Compose 构建能力。
@@ -50,6 +50,7 @@
     - 每个点击点的 `delayMs`、`touchDurationMs`、`repeatCount`
   - 定时项：
     - 自定义 `hh:mm:ss` 选择器（默认当前时分，秒默认 `00`）
+    - 提前执行毫秒配置 `scheduleAdvanceMs`（默认 `0ms`，修改后立即自动保存）
     - 大字实时时钟显示 `HH:mm:ss.S`（1 位小数）
     - NTP 状态展示、NTP 服务器配置入口
     - 定时悬浮窗开关入口（设置时间成功后会自动尝试开启）
@@ -71,6 +72,7 @@
       - 滑动动作支持终点坐标：`endX` / `endY`
     - `AutoClickProfile`
       - 新增 `ntpServerHost`（默认 `ntp.aliyun.com`）
+      - 新增 `scheduleAdvanceMs`（保存“提前多少毫秒执行”，默认 `0`）
       - 新增 `scheduleRuleHms`（保存 `hh:mm:ss` 规则）
     - `AutoClickRunState`
     - `TimeSyncState`
@@ -85,7 +87,7 @@
     - 管理 `profile/profiles/runtime/recording` 的 `StateFlow`
     - 管理 `timeSync`（NTP 校时状态）`StateFlow`
     - 点击点增删拖拽、顺序调整与参数更新
-    - `scheduleAtHms(hour, minute, second)` 定时规则配置与触发
+    - `scheduleAtHms(hour, minute, second)` 定时规则配置与触发（实际执行时间 = 设定整秒时间 - `scheduleAdvanceMs`）
     - 轮询对齐时钟触发（20~50ms 级轮询）
     - 定时触发执行时使用“当前配置快照”的运行方式（运行一次/循环运行）
     - NTP 校时（`syncNtpTime` / `updateNtpServer` / `currentAlignedNowMillis`）

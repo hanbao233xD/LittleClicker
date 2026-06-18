@@ -48,6 +48,7 @@ object AutoClickRepository {
         val randomDelayMs: Long? = null,
         val recordingMode: String? = null,
         val ntpServerHost: String? = null,
+        val scheduleAdvanceMs: Long? = null,
         val scheduleRuleHms: String? = null,
         val startAtMillis: Long? = null,
         val updatedAt: Long? = null,
@@ -104,6 +105,7 @@ object AutoClickRepository {
             id = profile.id.ifBlank { DEFAULT_PROFILE_ID },
             name = profile.name.ifBlank { "未命名配置" },
             ntpServerHost = profile.ntpServerHost.ifBlank { DEFAULT_NTP_SERVER_HOST },
+            scheduleAdvanceMs = profile.scheduleAdvanceMs.coerceAtLeast(0L),
             scheduleRuleHms = normalizeScheduleRuleHms(profile.scheduleRuleHms),
             updatedAt = System.currentTimeMillis()
         )
@@ -176,6 +178,7 @@ object AutoClickRepository {
             randomDelayMs = (payload.randomDelayMs ?: DEFAULT_RANDOM_DELAY_MS).coerceAtLeast(0L),
             recordingMode = parseRecordingMode(payload.recordingMode),
             ntpServerHost = payload.ntpServerHost?.takeIf { it.isNotBlank() } ?: DEFAULT_NTP_SERVER_HOST,
+            scheduleAdvanceMs = (payload.scheduleAdvanceMs ?: DEFAULT_SCHEDULE_ADVANCE_MS).coerceAtLeast(0L),
             scheduleRuleHms = normalizeScheduleRuleHms(payload.scheduleRuleHms),
             startAtMillis = payload.startAtMillis,
             updatedAt = payload.updatedAt ?: System.currentTimeMillis()
