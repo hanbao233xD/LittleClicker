@@ -678,7 +678,7 @@ private fun TimerCard(
                     .fillMaxWidth()
                     .heightIn(min = 56.dp)
             ) {
-                Text("配置ntp服务器")
+                Text("配置 NTP 服务器")
             }
             Text(
                 "设定时间：${scheduleRuleHms ?: "未设置"}",

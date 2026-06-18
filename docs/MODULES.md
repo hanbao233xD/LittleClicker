@@ -43,7 +43,7 @@
   - 深色适配：页面背景渐变、卡片容器、成功态/强调色、定时大时钟区域均支持深浅模式动态配色。
   - 配置项：
     - `profile.name`
-    - `cycleCount`
+    - `cycleCount`（运行方式为 `运行一次` 时的整套脚本运行次数，默认 `1`）
     - `runMode`（`运行一次` / `循环运行直至手动停止`）
     - `loopIntervalDelayMs`（循环模式下每轮结束后的等待时长，默认 `200ms`）
     - `recordingMode`（`仅录制` / `录制时穿透到应用`）
@@ -80,7 +80,7 @@
   - 兼容策略：旧 JSON 缺失新增字段时自动回填默认值，不破坏历史配置。
 
 ## 6. 自动点击协调模块（AutoClickCoordinator）
-- 作用：统一页面、悬浮窗、无障碍服务的状态与操作入口。
+  - 作用：统一页面、悬浮窗、无障碍服务的状态与操作入口。
 - 实现方法：
   - 文件：`app/src/main/java/com/example/littleclicker/autoclick/AutoClickCoordinator.kt`
   - 能力：
@@ -89,7 +89,7 @@
     - 点击点增删拖拽、顺序调整与参数更新
     - `scheduleAtHms(hour, minute, second)` 定时规则配置与触发（实际执行时间 = 设定整秒时间 - `scheduleAdvanceMs`）
     - 轮询对齐时钟触发（20~50ms 级轮询）
-    - 定时触发执行时使用“当前配置快照”的运行方式（运行一次/循环运行）
+    - 定时触发执行时使用“当前配置快照”的运行方式（运行一次按 `cycleCount` 重复整套脚本 / 循环运行）
     - NTP 校时（`syncNtpTime` / `updateNtpServer` / `currentAlignedNowMillis`）
     - 启动/暂停/继续/停止执行
     - 自动点击配置保存、加载、删除与列表刷新

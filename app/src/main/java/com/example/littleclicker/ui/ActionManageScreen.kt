@@ -112,6 +112,9 @@ internal fun ActionManageScreen(onBack: () -> Unit) {
         var loopIntervalDelayInput by remember(profile.loopIntervalDelayMs, profile.runMode) {
             mutableStateOf(profile.loopIntervalDelayMs.toString())
         }
+        var cycleCountInput by remember(profile.cycleCount, profile.runMode) {
+            mutableStateOf(profile.cycleCount.toString())
+        }
         var clickRandomOffsetInput by remember(profile.clickRandomOffsetPx) {
             mutableStateOf(profile.clickRandomOffsetPx.toString())
         }
@@ -176,6 +179,26 @@ internal fun ActionManageScreen(onBack: () -> Unit) {
                                     }
                                     AutoClickCoordinator.updateRunMode(mode)
                                 }
+                            )
+                        }
+                        if (profile.runMode == AutoClickRunMode.RunOnce) {
+                            MiuixTextField(
+                                value = cycleCountInput,
+                                onValueChange = { rawValue ->
+                                    val filtered = rawValue.filter { it.isDigit() }
+                                    cycleCountInput = filtered
+                                    val parsed = filtered.toIntOrNull() ?: return@MiuixTextField
+                                    if (parsed == profile.cycleCount) return@MiuixTextField
+                                    AutoClickCoordinator.updateCycleCount(parsed)
+                                },
+                                modifier = Modifier.fillMaxWidth(),
+                                label = "运行次数",
+                                singleLine = true,
+                                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number)
+                            )
+                            Text(
+                                text = "开始运行后，整套脚本会重复执行到设定次数，默认 1 次",
+                                color = MiuixTheme.colorScheme.onBackgroundVariant
                             )
                         }
                         if (profile.runMode == AutoClickRunMode.LoopUntilStopped) {

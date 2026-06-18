@@ -207,11 +207,15 @@ class AutoClickAccessibilityService : AccessibilityService() {
 
         when (profile.runMode) {
             AutoClickRunMode.RunOnce -> {
-                executePointSequence(
-                    points = profile.points,
-                    clickRandomOffsetPx = profile.clickRandomOffsetPx,
-                    randomDelayMs = profile.randomDelayMs
-                )
+                repeat(profile.cycleCount.coerceAtLeast(1)) {
+                    ensureNotCancelled()
+                    waitIfPaused()
+                    executePointSequence(
+                        points = profile.points,
+                        clickRandomOffsetPx = profile.clickRandomOffsetPx,
+                        randomDelayMs = profile.randomDelayMs
+                    )
+                }
             }
             AutoClickRunMode.LoopUntilStopped -> {
                 while (currentCoroutineContext().isActive) {

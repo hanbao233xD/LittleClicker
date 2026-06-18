@@ -763,7 +763,7 @@ object AutoClickCoordinator {
         val started = AutoClickAccessibilityService.start(profileSnapshot)
         _runtime.value = if (started) {
             val runModeLabel = when (profileSnapshot.runMode) {
-                AutoClickRunMode.RunOnce -> "运行一次"
+                AutoClickRunMode.RunOnce -> "运行一次（${profileSnapshot.cycleCount.coerceAtLeast(1)}次）"
                 AutoClickRunMode.LoopUntilStopped -> "循环运行"
             }
             AutoClickRuntime(
