@@ -110,7 +110,7 @@ private enum class MainTab(val route: String, val title: String) {
 private fun AppRoot() {
     val navController = rememberNavController()
     val context = LocalContext.current
-    var noticeInfo by remember { mutableStateOf<AppNoticeInfo?>(null) }
+    var noticeInfo by remember { mutableStateOf<List<AppNoticeInfo>>(emptyList()) }
     var updateInfo by remember { mutableStateOf<AppUpdateInfo?>(null) }
     val tabs = listOf(MainTab.AUTO_CLICK, MainTab.ABOUT)
     val navBackStackEntry = navController.currentBackStackEntryAsState()
@@ -118,11 +118,15 @@ private fun AppRoot() {
 
     LaunchedEffect(Unit) {
         AutoClickCoordinator.initialize(context)
+        noticeInfo = AppNoticeChecker.loadCachedNotice(context)
         coroutineScope {
             val updateTask = async { AppUpdateChecker.checkUpdate(localVersionCode = BuildConfig.VERSION_CODE) }
-            val noticeTask = async { AppNoticeChecker.fetchNotice() }
+            val noticeTask = async { AppNoticeChecker.refreshNotice(context) }
             updateInfo = updateTask.await()
-            noticeInfo = noticeTask.await()
+            val noticeRefresh = noticeTask.await()
+            if (noticeRefresh.remoteFetched) {
+                noticeInfo = noticeRefresh.noticeInfo
+            }
         }
     }
 

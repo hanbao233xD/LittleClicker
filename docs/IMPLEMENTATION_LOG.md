@@ -1062,3 +1062,54 @@
   - `./gradlew :app:assembleDebug --no-daemon` 通过。
   - `adb install -r app/build/outputs/apk/debug/app-debug.apk` 安装成功。
   - `adb logcat -c` 后执行 `adb shell monkey -p com.example.littleclicker -c android.intent.category.LAUNCHER 1` 可正常拉起应用；未检出 LittleClicker 崩溃日志。
+
+## 2026-06-18（公告功能增加本地缓存预加载）
+- 需求实现：
+  - 公告从云端加载成功后自动缓存到本地；
+  - 每次启动应用时优先展示本地缓存公告，再异步请求云端公告刷新。
+- 修复内容：
+  - `AppNoticeChecker`：
+    - 新增本地缓存文件 `filesDir/updates/notice_cache.txt`；
+    - 新增 `loadCachedNotice(context)`，用于启动时读取并解析本地缓存；
+    - 新增 `refreshNotice(context)`，用于请求云端公告并在成功后自动回写缓存；
+    - 当云端成功返回空公告或非法公告时，自动清理本地缓存，避免旧公告残留。
+  - `MainActivity`：
+    - 启动时先加载本地缓存公告；
+    - 再并行执行“检查更新 + 刷新云端公告”，云端成功后覆盖首页公告状态。
+  - 单元测试：
+    - 新增 `AppNoticeCheckerTest`，覆盖公告解析与换行解码场景。
+- 验证结果：
+  - `./gradlew :app:compileDebugKotlin :app:testDebugUnitTest --no-daemon` 编译通过，但全量单测未完全通过：现有 `AutoClickSerializationTest.scheduleAtHms_whenFuture_returnsTrue` 失败，与本次公告缓存改动无关。
+  - `./gradlew :app:testDebugUnitTest --tests com.example.littleclicker.update.AppNoticeCheckerTest --tests com.example.littleclicker.update.EscapedLineBreaksTest --no-daemon` 通过。
+  - `./gradlew :app:assembleDebug --no-daemon` 通过。
+  - `adb install -r app/build/outputs/apk/debug/app-debug.apk` 安装成功。
+  - `adb logcat -c` 后执行 `adb shell monkey -p com.example.littleclicker -c android.intent.category.LAUNCHER 1` 可正常拉起应用。
+  - `adb shell pidof com.example.littleclicker` 返回有效进程 ID；`adb logcat -d` 未检出 `FATAL EXCEPTION` / `Process: com.example.littleclicker` 崩溃日志。
+
+## 2026-06-18（公告升级为 Banner 图片位）
+- 需求实现：
+  - 公告入口改为 2:1 Banner；
+  - Banner 图片与配置都需要本地缓存优先加载，再尝试云端刷新；
+  - Banner 增加 8dp 圆角，并自动横向滚动播放；
+  - 云端配置格式调整为 `图片地址|跳转地址`，配置地址改为 `https://littlecold.cn/littleclicker/banner/config.txt`。
+- 修复内容：
+  - `AppNoticeChecker`：
+    - 公告配置地址切换为 `banner/config.txt`；
+    - 新增图片缓存与配置缓存双文件方案：`filesDir/banner/config_cache.txt`、`filesDir/banner/banner_cache.*`；
+    - 启动时先读取本地缓存配置与图片；
+    - 云端刷新时先请求配置，再下载图片，成功后一起回写本地缓存；
+    - 若配置非法则清理本地缓存；若图片下载失败则保留旧缓存并不覆盖当前 Banner。
+  - `AutoClickScreen`：
+    - 将顶部公告文字卡片改为可点击 2:1 Banner；
+    - Banner 使用 8dp 圆角和轻描边；
+    - 增加持续往返的横向平移动画，形成自动滚动播放效果。
+  - 单元测试：
+    - `AppNoticeCheckerTest` 改为覆盖 Banner 配置解析场景。
+- 验证结果：
+  - `./gradlew :app:compileDebugKotlin :app:testDebugUnitTest --tests com.example.littleclicker.update.AppNoticeCheckerTest --tests com.example.littleclicker.update.EscapedLineBreaksTest --no-daemon` 通过。
+  - `./gradlew :app:assembleDebug --no-daemon` 通过。
+  - `adb install -r app/build/outputs/apk/debug/app-debug.apk` 安装成功。
+  - `adb shell monkey -p com.example.littleclicker -c android.intent.category.LAUNCHER 1` 可正常拉起应用；`adb shell pidof com.example.littleclicker` 返回有效进程 ID。
+  - `adb shell run-as com.example.littleclicker ls -l files/banner` 验证通过，已生成 `config_cache.txt` 与 `banner_cache.png` 本地缓存文件。
+  - 真机截图确认：首页顶部已显示 2:1 Banner，位于标题下方，圆角样式生效。
+  - `adb logcat -d` 未检出 `FATAL EXCEPTION` / `Process: com.example.littleclicker` 崩溃日志。

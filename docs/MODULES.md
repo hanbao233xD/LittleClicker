@@ -187,8 +187,8 @@
   - 主题：跟随系统深浅模式选择 Miuix 色板，保留灰色半透明视觉风格并提升边框可读性。
   - 对外入口：`start(context)` / `stop(context)` 与 `overlayVisible` 状态流。
 
-## 15. 应用更新与公告检查模块（AppUpdateChecker / AppNoticeChecker + AutoClickScreen 顶部卡片）
-- 作用：应用启动时检查线上版本与公告，并在首页顶部提示可点击入口。
+## 15. 应用更新与公告检查模块（AppUpdateChecker / AppNoticeChecker + AutoClickScreen 顶部 Banner）
+- 作用：应用启动时检查线上版本与公告 Banner，并在首页顶部提示可点击入口。
 - 实现方法：
   - 文件：
     - `app/src/main/java/com/example/littleclicker/update/AppUpdateChecker.kt`
@@ -197,11 +197,16 @@
     - `app/src/main/java/com/example/littleclicker/ui/AutoClickScreen.kt`
   - 检查地址：
     - 更新：`https://littlecold.cn/littleclicker/version.txt`
-    - 公告：`https://littlecold.cn/littleclicker/notice.txt`
+    - 公告 Banner 配置：`https://littlecold.cn/littleclicker/banner/config.txt`
   - 解析规则：按 `|` 分割三段（`版本号|下载链接|更新日志`）。
-  - 公告规则：按 `|` 分割两段（`链接|内容`）。
+  - 公告规则：按 `|` 分割两段（`图片地址|跳转地址`）。
+  - 公告缓存：
+    - 启动时先读取本地缓存配置与图片，再异步请求云端公告刷新界面；
+    - 云端请求成功后自动回写 `filesDir/banner/config_cache.txt` 与 `filesDir/banner/banner_cache.*`；
+    - 若云端成功返回空公告或非法公告，则清理本地缓存，避免陈旧公告长期残留；
+    - 若云端配置可用但图片下载失败，则保留当前本地缓存，不用空状态覆盖首页。
   - 比对规则：线上 `versionCode` 大于本地 `BuildConfig.VERSION_CODE` 时判定为有更新。
   - 展示规则：
-    - 有公告时显示“公告通知，点击查看”卡片，副文案为公告内容；
+    - 有公告时显示 2:1 Banner，圆角 8dp，支持自动横向滚动播放；
     - 有更新时显示“检测到更新！点击下载”卡片，副文案为更新日志。
   - 交互：点击卡片后通过系统浏览器打开下载链接。

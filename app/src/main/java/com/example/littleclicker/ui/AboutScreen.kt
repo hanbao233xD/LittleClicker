@@ -42,10 +42,8 @@ internal fun AboutScreen(innerPadding: PaddingValues) {
     val version = BuildConfig.VERSION_NAME
     val aboutItems = listOf(
         "官网",
-        "QQ群",
-        "检查更新",
-        "隐私政策",
-        "免责声明"
+        "Github（求Star，QWQ）",
+        "QQ群"
     )
 
     Column(
@@ -65,6 +63,8 @@ internal fun AboutScreen(innerPadding: PaddingValues) {
         )
         Spacer(modifier = Modifier.height(14.dp))
         Text(text = appName, style = MiuixTheme.textStyles.title1, fontWeight = FontWeight.Bold)
+        Spacer(modifier = Modifier.height(4.dp))
+        Text(text="感谢你使用我的软件，爱你喵~", color = MiuixTheme.colorScheme.onBackgroundVariant)
         Spacer(modifier = Modifier.height(4.dp))
         Text(text = "Version $version", color = MiuixTheme.colorScheme.onBackgroundVariant)
         Spacer(modifier = Modifier.height(24.dp))
@@ -94,6 +94,11 @@ internal fun AboutScreen(innerPadding: PaddingValues) {
                                         context = context,
                                         url = "https://qm.qq.com/q/vTyFd6Fsti",
                                         failureHint = "QQ群链接打开失败"
+                                    )
+                                    "Github（求Star，QWQ）"->openExternalUrl(
+                                        context = context,
+                                        url = "https://github.com/hanbao233xD/LittleClicker",
+                                        failureHint = "Github链接打开失败"
                                     )
 
                                     else -> Toast.makeText(context, "$item 功能待接入", Toast.LENGTH_SHORT).show()

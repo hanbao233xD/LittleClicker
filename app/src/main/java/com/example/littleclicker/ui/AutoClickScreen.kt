@@ -3,6 +3,7 @@ package com.example.littleclicker.ui
 import android.app.AlertDialog
 import android.content.Context
 import android.content.Intent
+import android.graphics.BitmapFactory
 import android.net.Uri
 import android.provider.Settings
 import android.text.InputType
@@ -11,10 +12,13 @@ import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.NumberPicker
 import android.widget.Toast
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
@@ -29,12 +33,16 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.pager.HorizontalPager
+import androidx.compose.foundation.pager.rememberPagerState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.ErrorOutline
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
@@ -42,12 +50,16 @@ import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.TextUnit
@@ -98,7 +110,7 @@ internal fun AutoClickScreen(innerPadding: PaddingValues) {
     AutoClickScreen(
         innerPadding = innerPadding,
         updateInfo = null,
-        noticeInfo = null
+        noticeInfo = emptyList()
     )
 }
 
@@ -106,7 +118,7 @@ internal fun AutoClickScreen(innerPadding: PaddingValues) {
 internal fun AutoClickScreen(
     innerPadding: PaddingValues,
     updateInfo: AppUpdateInfo?,
-    noticeInfo: AppNoticeInfo?,
+    noticeInfo: List<AppNoticeInfo>,
 ) {
     val context = LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current
@@ -222,12 +234,11 @@ internal fun AutoClickScreen(
 
         }
 
-        if (noticeInfo != null) {
+        if (noticeInfo.isNotEmpty()) {
             item {
-                ActionLinkCard(
-                    title = "公告",
-                    content = noticeInfo.content,
-                    onClick = { openExternalLink(context, noticeInfo.link) }
+                NoticeBannerCarousel(
+                    noticeInfo = noticeInfo,
+                    onClick = { banner -> openExternalLink(context, banner.targetUrl) }
                 )
             }
         }
@@ -413,6 +424,113 @@ internal fun AutoClickScreen(
 
         item {
             Spacer(modifier = Modifier.height(24.dp))
+        }
+    }
+}
+
+@Composable
+private fun NoticeBannerCard(
+    noticeInfo: AppNoticeInfo,
+    onClick: () -> Unit,
+) {
+    val bannerBitmap = remember(noticeInfo.imageFilePath) {
+        BitmapFactory.decodeFile(noticeInfo.imageFilePath)?.asImageBitmap()
+    } ?: return
+    val outerShape = RoundedCornerShape(8.dp)
+
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .clip(outerShape)
+            .background(MiuixTheme.colorScheme.surface)
+            .border(
+                width = 1.dp,
+                color = MiuixTheme.colorScheme.onBackgroundVariant.copy(alpha = 0.18f),
+                shape = outerShape,
+            )
+            .clickable(onClick = onClick)
+            .padding(2.dp),
+        contentAlignment = Alignment.Center
+    ) {
+        Image(
+            bitmap = bannerBitmap,
+            contentDescription = "公告Banner",
+            contentScale = ContentScale.Fit,
+            modifier = Modifier
+                .fillMaxSize()
+                .clip(RoundedCornerShape(6.dp))
+        )
+    }
+}
+
+@Composable
+private fun NoticeBannerCarousel(
+    noticeInfo: List<AppNoticeInfo>,
+    onClick: (AppNoticeInfo) -> Unit,
+) {
+    val banners = remember(noticeInfo) {
+        noticeInfo.filter { it.imageFilePath.isNotBlank() }
+    }
+    if (banners.isEmpty()) return
+    val pagerState = rememberPagerState(pageCount = { banners.size })
+
+    LaunchedEffect(banners.size) {
+        if (banners.size <= 1) return@LaunchedEffect
+        while (true) {
+            delay(3500L)
+            val nextPage = (pagerState.currentPage + 1) % banners.size
+            pagerState.animateScrollToPage(nextPage)
+        }
+    }
+
+    Column(
+        modifier = Modifier.fillMaxWidth(),
+        verticalArrangement = Arrangement.spacedBy(8.dp)
+    ) {
+        Card(
+            modifier = Modifier
+                .fillMaxWidth()
+                .aspectRatio(2f),
+            cornerRadius = 8.dp,
+            colors = CardDefaults.defaultColors(
+                color = MiuixTheme.colorScheme.surfaceContainer,
+                contentColor = MiuixTheme.colorScheme.onSurfaceContainer
+            ),
+            insideMargin = PaddingValues(0.dp)
+        ) {
+            HorizontalPager(
+                state = pagerState,
+                modifier = Modifier.fillMaxSize(),
+                userScrollEnabled = banners.size > 1
+            ) { page ->
+                NoticeBannerCard(
+                    noticeInfo = banners[page],
+                    onClick = { onClick(banners[page]) }
+                )
+            }
+        }
+
+        if (banners.size > 1) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.Center
+            ) {
+                repeat(banners.size) { index ->
+                    Box(
+                        modifier = Modifier
+                            .padding(horizontal = 4.dp)
+                            .size(if (index == pagerState.currentPage) 18.dp else 6.dp, 6.dp)
+                            .clip(CircleShape)
+                            .background(
+                                if (index == pagerState.currentPage) {
+                                    MiuixTheme.colorScheme.primary
+                                } else {
+                                    MiuixTheme.colorScheme.onBackgroundVariant.copy(alpha = 0.28f)
+                                }
+                            )
+                    )
+                }
+            }
         }
     }
 }

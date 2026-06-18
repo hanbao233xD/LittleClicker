@@ -2,6 +2,7 @@
 /.gradle
 /.idea
 /.agents
+/keystore
 /local.properties
 /.idea/caches
 /.idea/libraries
