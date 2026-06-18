@@ -1130,3 +1130,19 @@
     - 调整后 toast 提示“已上移/下移并自动保存”。
 - 验证结果：
   - 待执行：`./gradlew :app:compileDebugKotlin --no-daemon`
+
+## 2026-06-18（取消横竖屏切换时的点位自动纠正）
+- 问题现象：
+  - 横屏下创建的点击动作，切回竖屏后会自动回到屏幕中间附近；
+  - 竖屏下位于下方的点击动作，切到横屏后会被自动纠正到左侧可视区。
+- 根因分析：
+  - `FloatingWindowService.syncPointOverlays(...)` 在同步悬浮点位时，会先把动作坐标 `clamp` 到当前屏幕范围内；
+  - 发现坐标越界后，还会调用 `AutoClickCoordinator.updatePointConfig(...)` 把纠正后的坐标重新写回配置，导致旋转后原始点位永久丢失。
+- 修复内容：
+  - `FloatingWindowService`：
+    - 点位同步时不再把点击/滑动动作坐标自动纠正并回写到配置；
+    - 悬浮窗编辑弹窗保存时，不再按当前屏幕范围裁剪到可视区，只保留 `>= 0` 的基础约束。
+  - 效果：
+    - 横竖屏切换后，允许保留超出当前屏幕可视区的动作坐标，不再自动移动到屏幕中间或左侧。
+- 验证结果：
+  - 待执行：`./gradlew :app:compileDebugKotlin --no-daemon`

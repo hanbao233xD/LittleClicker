@@ -4,6 +4,7 @@ import android.app.AlertDialog
 import android.app.Service
 import android.content.Context
 import android.content.Intent
+import android.content.res.Configuration
 import android.graphics.PixelFormat
 import android.os.Build
 import android.os.SystemClock
@@ -133,6 +134,7 @@ class FloatingWindowService : LifecycleService() {
     private var profileCollectJob: Job? = null
     private var runtimeCollectJob: Job? = null
     private var recordingCollectJob: Job? = null
+    private var displayMonitorJob: Job? = null
     private var recordCapturePassthroughJob: Job? = null
     private var pointEditDialog: AlertDialog? = null
     private var pointEditOverlayLowered: Boolean = false
@@ -178,6 +180,19 @@ class FloatingWindowService : LifecycleService() {
         super.onDestroy()
     }
 
+    override fun onConfigurationChanged(newConfig: Configuration) {
+        super.onConfigurationChanged(newConfig)
+        panelView?.post {
+            rebuildPointOverlaysFromProfile()
+            updatePanelOffset(panelOffset)
+            panelLayoutParams?.let { params ->
+                panelView?.let { view ->
+                    syncOverlayCoordinateOffset(view, params)
+                }
+            }
+        }
+    }
+
     private fun showOverlayIfNeeded() {
         if (panelView != null) return
         if (!Settings.canDrawOverlays(this)) {
@@ -220,6 +235,8 @@ class FloatingWindowService : LifecycleService() {
                 setPointOverlaysTouchable(shouldPointOverlaysBeTouchableNow())
             }
         }
+
+        startDisplayMonitor()
     }
 
     private fun createPanelOverlay() {
@@ -367,38 +384,52 @@ class FloatingWindowService : LifecycleService() {
                 removePointOverlayGroup(pointViews.remove(point.id))
                 return@forEach
             }
-            val boundedCenter = clampPointCenter(IntOffset(point.x, point.y))
+            val pointCenter = IntOffset(point.x, point.y)
             if (point.actionType == AutoClickActionType.Swipe) {
-                val rawEnd = IntOffset(
+                val pointEnd = IntOffset(
                     x = point.endX ?: (point.x + 200),
                     y = point.endY ?: point.y
                 )
-                val boundedEnd = clampPointCenter(rawEnd)
-                if (boundedCenter.x != point.x ||
-                    boundedCenter.y != point.y ||
-                    boundedEnd.x != rawEnd.x ||
-                    boundedEnd.y != rawEnd.y
-                ) {
-                    AutoClickCoordinator.updatePointConfig(
-                        pointId = point.id,
-                        x = boundedCenter.x,
-                        y = boundedCenter.y,
-                        actionType = AutoClickActionType.Swipe,
-                        endX = boundedEnd.x,
-                        endY = boundedEnd.y
-                    )
+                if (!isPointCenterVisibleOnScreen(pointCenter) || !isPointCenterVisibleOnScreen(pointEnd)) {
+                    removePointOverlayGroup(pointViews.remove(point.id))
+                    return@forEach
                 }
-                syncSwipePointOverlay(pointId = point.id, start = boundedCenter, end = boundedEnd)
+                syncSwipePointOverlay(pointId = point.id, start = pointCenter, end = pointEnd)
             } else {
-                if (boundedCenter.x != point.x || boundedCenter.y != point.y) {
-                    AutoClickCoordinator.updatePointConfig(
-                        pointId = point.id,
-                        x = boundedCenter.x,
-                        y = boundedCenter.y,
-                        actionType = AutoClickActionType.Click
-                    )
+                if (!isPointCenterVisibleOnScreen(pointCenter)) {
+                    removePointOverlayGroup(pointViews.remove(point.id))
+                    return@forEach
                 }
-                syncClickPointOverlay(pointId = point.id, center = boundedCenter)
+                syncClickPointOverlay(pointId = point.id, center = pointCenter)
+            }
+        }
+    }
+
+    private fun rebuildPointOverlaysFromProfile() {
+        pointViews.values.forEach { group ->
+            removePointOverlayGroup(group)
+        }
+        pointViews.clear()
+        syncPointOverlays(AutoClickCoordinator.profile.value.points)
+        setPointOverlaysTouchable(shouldPointOverlaysBeTouchableNow())
+    }
+
+    private fun startDisplayMonitor() {
+        displayMonitorJob?.cancel()
+        displayMonitorJob = lifecycleScope.launch {
+            var lastSignature = currentDisplaySignature()
+            while (isActive) {
+                delay(300L)
+                val currentSignature = currentDisplaySignature()
+                if (currentSignature == lastSignature) continue
+                lastSignature = currentSignature
+                rebuildPointOverlaysFromProfile()
+                updatePanelOffset(panelOffset)
+                panelLayoutParams?.let { params ->
+                    panelView?.let { view ->
+                        syncOverlayCoordinateOffset(view, params)
+                    }
+                }
             }
         }
     }
@@ -766,6 +797,17 @@ class FloatingWindowService : LifecycleService() {
         return IntSize(dm.widthPixels, dm.heightPixels)
     }
 
+    private fun isPointCenterVisibleOnScreen(center: IntOffset): Boolean {
+        val screen = getScreenSize()
+        return center.x in 0 until screen.width && center.y in 0 until screen.height
+    }
+
+    private fun currentDisplaySignature(): String {
+        val size = getScreenSize()
+        val rotation = resources.configuration.orientation
+        return "${size.width}x${size.height}:$rotation"
+    }
+
     private fun showPointEditDialog(point: AutoClickPoint) {
         pointEditDialog?.dismiss()
 
@@ -864,28 +906,27 @@ class FloatingWindowService : LifecycleService() {
                     currentPoint.touchDurationMs
                 }
                 val repeat = repeatInput.text.toString().toIntOrNull()?.coerceAtLeast(1) ?: currentPoint.repeatCount
-                val bounded = if (actionType.usesScreenCoordinates) {
-                    clampPointCenter(IntOffset(x, y))
+                val resolvedCenter = if (actionType.usesScreenCoordinates) {
+                    IntOffset(x.coerceAtLeast(0), y.coerceAtLeast(0))
                 } else {
                     IntOffset(currentPoint.x, currentPoint.y)
                 }
-                val boundedEnd = if (actionType == AutoClickActionType.Swipe) {
-                    val rawEnd = IntOffset(
-                        (endX ?: currentPoint.endX ?: (bounded.x + 200)).coerceAtLeast(0),
-                        (endY ?: currentPoint.endY ?: bounded.y).coerceAtLeast(0)
+                val resolvedEnd = if (actionType == AutoClickActionType.Swipe) {
+                    IntOffset(
+                        (endX ?: currentPoint.endX ?: (resolvedCenter.x + 200)).coerceAtLeast(0),
+                        (endY ?: currentPoint.endY ?: resolvedCenter.y).coerceAtLeast(0)
                     )
-                    clampPointCenter(rawEnd)
                 } else {
                     null
                 }
 
                 AutoClickCoordinator.updatePointConfig(
                     pointId = point.id,
-                    x = bounded.x,
-                    y = bounded.y,
+                    x = resolvedCenter.x,
+                    y = resolvedCenter.y,
                     actionType = actionType,
-                    endX = boundedEnd?.x,
-                    endY = boundedEnd?.y,
+                    endX = resolvedEnd?.x,
+                    endY = resolvedEnd?.y,
                     delayMs = delayMs,
                     touchDurationMs = touchMs,
                     repeatCount = repeat,
@@ -1309,6 +1350,8 @@ class FloatingWindowService : LifecycleService() {
         runtimeCollectJob = null
         recordingCollectJob?.cancel()
         recordingCollectJob = null
+        displayMonitorJob?.cancel()
+        displayMonitorJob = null
         recordCapturePassthroughJob?.cancel()
         recordCapturePassthroughJob = null
 
