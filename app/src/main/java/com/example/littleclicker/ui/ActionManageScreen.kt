@@ -19,10 +19,12 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.ArrowDownward
+import androidx.compose.material.icons.filled.ArrowUpward
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.runtime.Composable
@@ -255,7 +257,7 @@ internal fun ActionManageScreen(onBack: () -> Unit) {
                     )
                 }
             } else {
-                items(profile.points, key = { it.id }) { point ->
+                itemsIndexed(profile.points, key = { _, point -> point.id }) { index, point ->
                     Card(
                         modifier = Modifier.fillMaxWidth(),
                         cornerRadius = 20.dp,
@@ -280,6 +282,43 @@ internal fun ActionManageScreen(onBack: () -> Unit) {
                                     modifier = Modifier.weight(1f)
                                 )
                                 Row(verticalAlignment = Alignment.CenterVertically) {
+                                    val canMoveUp = index > 0
+                                    val canMoveDown = index < profile.points.lastIndex
+                                    val disabledTint = MiuixTheme.colorScheme.onBackgroundVariant.copy(alpha = 0.35f)
+                                    IconButton(
+                                        onClick = {
+                                            if (!canMoveUp) return@IconButton
+                                            movePointOrderAndSave(
+                                                context = context,
+                                                point = point,
+                                                offset = -1,
+                                                successMessage = "动作 #${point.id} 已上移并自动保存"
+                                            )
+                                        }
+                                    ) {
+                                        Icon(
+                                            imageVector = Icons.Filled.ArrowUpward,
+                                            contentDescription = "上移动作",
+                                            tint = if (canMoveUp) MiuixTheme.colorScheme.onSurfaceContainer else disabledTint
+                                        )
+                                    }
+                                    IconButton(
+                                        onClick = {
+                                            if (!canMoveDown) return@IconButton
+                                            movePointOrderAndSave(
+                                                context = context,
+                                                point = point,
+                                                offset = 1,
+                                                successMessage = "动作 #${point.id} 已下移并自动保存"
+                                            )
+                                        }
+                                    ) {
+                                        Icon(
+                                            imageVector = Icons.Filled.ArrowDownward,
+                                            contentDescription = "下移动作",
+                                            tint = if (canMoveDown) MiuixTheme.colorScheme.onSurfaceContainer else disabledTint
+                                        )
+                                    }
                                     IconButton(onClick = { showPointEditDialog(context, point) }) {
                                         Icon(
                                             imageVector = Icons.Filled.Edit,
@@ -347,6 +386,30 @@ internal fun ActionManageScreen(onBack: () -> Unit) {
             }
         }
     }
+}
+
+private fun movePointOrderAndSave(
+    context: Context,
+    point: AutoClickPoint,
+    offset: Int,
+    successMessage: String,
+) {
+    val moveResult = AutoClickCoordinator.movePointOrder(point.id, offset)
+    val message = moveResult.fold(
+        onSuccess = { moved ->
+            if (moved) {
+                successMessage
+            } else if (offset < 0) {
+                "动作 #${point.id} 已经在最上方"
+            } else {
+                "动作 #${point.id} 已经在最下方"
+            }
+        },
+        onFailure = { error ->
+            "动作 #${point.id} 顺序调整成功，但自动保存失败：${error.message ?: "未知错误"}"
+        }
+    )
+    Toast.makeText(context, message, Toast.LENGTH_SHORT).show()
 }
 
 private fun showPointEditDialog(

@@ -1113,3 +1113,20 @@
   - `adb shell run-as com.example.littleclicker ls -l files/banner` 验证通过，已生成 `config_cache.txt` 与 `banner_cache.png` 本地缓存文件。
   - 真机截图确认：首页顶部已显示 2:1 Banner，位于标题下方，圆角样式生效。
   - `adb logcat -d` 未检出 `FATAL EXCEPTION` / `Process: com.example.littleclicker` 崩溃日志。
+
+## 2026-06-18（参数设置动作列表支持上下调整顺序）
+- 需求实现：
+  - 在“参数设置 -> 动作列表”中，为每个动作的编辑按钮左侧新增上移/下移按钮；
+  - 调整动作前后顺序后立即自动保存。
+- 修复内容：
+  - `AutoClickCoordinator`：
+    - 新增 `movePointOrder(pointId, offset)`；
+    - 按当前动作列表顺序交换目标动作位置；
+    - 调整成功后立即调用 `saveProfile()` 落盘。
+  - `ActionManageScreen`：
+    - 动作列表改为按索引渲染；
+    - 在编辑按钮左侧新增上箭头、下箭头按钮；
+    - 首项上移按钮与末项下移按钮显示为禁用态；
+    - 调整后 toast 提示“已上移/下移并自动保存”。
+- 验证结果：
+  - 待执行：`./gradlew :app:compileDebugKotlin --no-daemon`

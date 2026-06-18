@@ -56,7 +56,7 @@
     - 设定时间规则展示与过期提示
   - 运行项：开启悬浮窗、立即开始、暂停/继续、停止、保存配置。
   - 悬浮窗启动闸门：动作悬浮窗与定时悬浮窗启动前统一检查 `悬浮窗/无障碍/电池优化` 三项权限，缺失时自动跳转对应设置页并提示，阻止启动。
-  - 动作列表：支持 `点击/滑动/Home/Back/多任务` 添加、编辑与删除；编辑弹窗调用现有 `updatePointConfig` 更新逻辑，删除调用 `removePoint`。
+  - 动作列表：支持 `点击/滑动/Home/Back/多任务` 添加、编辑、删除与上下调整顺序；编辑弹窗调用现有 `updatePointConfig` 更新逻辑，删除调用 `removePoint`，顺序调整调用 `movePointOrder` 并立即自动保存。
 
 ## 5. 自动点击数据模块（Models + Repository）
 - 作用：定义自动点击数据结构并提供本地 JSON 持久化。
@@ -84,7 +84,7 @@
   - 能力：
     - 管理 `profile/profiles/runtime/recording` 的 `StateFlow`
     - 管理 `timeSync`（NTP 校时状态）`StateFlow`
-    - 点击点增删拖拽与参数更新
+    - 点击点增删拖拽、顺序调整与参数更新
     - `scheduleAtHms(hour, minute, second)` 定时规则配置与触发
     - 轮询对齐时钟触发（20~50ms 级轮询）
     - 定时触发执行时使用“当前配置快照”的运行方式（运行一次/循环运行）

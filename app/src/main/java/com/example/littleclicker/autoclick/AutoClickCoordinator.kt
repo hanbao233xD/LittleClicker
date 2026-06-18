@@ -428,6 +428,31 @@ object AutoClickCoordinator {
         }
     }
 
+    fun movePointOrder(pointId: Int, offset: Int): Result<Boolean> {
+        if (offset == 0) return Result.success(false)
+
+        var moved = false
+        updateProfile { current ->
+            val currentIndex = current.points.indexOfFirst { it.id == pointId }
+            if (currentIndex < 0) return@updateProfile current
+
+            val targetIndex = (currentIndex + offset).coerceIn(0, current.points.lastIndex)
+            if (targetIndex == currentIndex) return@updateProfile current
+
+            moved = true
+            val reordered = current.points.toMutableList()
+            val point = reordered.removeAt(currentIndex)
+            reordered.add(targetIndex, point)
+            current.copy(points = reordered)
+        }
+
+        if (!moved) return Result.success(false)
+        return saveProfile().fold(
+            onSuccess = { Result.success(true) },
+            onFailure = { Result.failure(it) }
+        )
+    }
+
     fun movePointBy(pointId: Int, dx: Int, dy: Int) {
         if (dx == 0 && dy == 0) return
         updateProfile { current ->
