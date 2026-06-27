@@ -1,4 +1,4 @@
-name: Build Release
+name: Dev Build（开发版）
 
 on:
   push:
