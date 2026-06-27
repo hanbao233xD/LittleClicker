@@ -6,12 +6,45 @@ plugins {
     id("org.jetbrains.kotlin.plugin.compose")
 }
 
-val releaseSigningPropertiesFile = rootProject.file("keystore/release-signing.properties")
-if (!releaseSigningPropertiesFile.exists()) {
-    throw GradleException("Missing release signing file: ${releaseSigningPropertiesFile.path}")
-}
-val releaseSigningProperties = Properties().apply {
-    releaseSigningPropertiesFile.inputStream().use { load(it) }
+val releaseStoreFile: java.io.File
+val releaseStorePassword: String
+val releaseKeyAlias: String
+val releaseKeyPassword: String
+
+val envKeystoreBase64 = System.getenv("SIGNING_KEYSTORE_BASE64")
+val envStorePassword = System.getenv("SIGNING_STORE_PASSWORD")
+val envKeyAlias = System.getenv("SIGNING_KEY_ALIAS")
+val envKeyPassword = System.getenv("SIGNING_KEY_PASSWORD")
+
+if (envKeystoreBase64 != null && envStorePassword != null && envKeyAlias != null && envKeyPassword != null) {
+    // CI 环境：从 base64 解码生成临时 keystore 文件
+    val keystoreBytes = java.util.Base64.getDecoder().decode(envKeystoreBase64)
+    val tempKeystoreFile = rootProject.file("build/tmp-release-keystore.jks")
+    tempKeystoreFile.parentFile.mkdirs()
+    tempKeystoreFile.writeBytes(keystoreBytes)
+    releaseStoreFile = tempKeystoreFile
+    releaseStorePassword = envStorePassword
+    releaseKeyAlias = envKeyAlias
+    releaseKeyPassword = envKeyPassword
+} else {
+    // 本地环境：从 properties 文件读取
+    val releaseSigningPropertiesFile = rootProject.file("keystore/release-signing.properties")
+    if (!releaseSigningPropertiesFile.exists()) {
+        throw GradleException("Missing release signing file: ${releaseSigningPropertiesFile.path}")
+    }
+    val releaseSigningProperties = Properties().apply {
+        releaseSigningPropertiesFile.inputStream().use { load(it) }
+    }
+    releaseStoreFile = rootProject.file(
+        releaseSigningProperties.getProperty("storeFile")
+            ?: throw GradleException("Missing storeFile in ${releaseSigningPropertiesFile.path}")
+    )
+    releaseStorePassword = releaseSigningProperties.getProperty("storePassword")
+        ?: throw GradleException("Missing storePassword in ${releaseSigningPropertiesFile.path}")
+    releaseKeyAlias = releaseSigningProperties.getProperty("keyAlias")
+        ?: throw GradleException("Missing keyAlias in ${releaseSigningPropertiesFile.path}")
+    releaseKeyPassword = releaseSigningProperties.getProperty("keyPassword")
+        ?: throw GradleException("Missing keyPassword in ${releaseSigningPropertiesFile.path}")
 }
 
 android {
@@ -24,16 +57,10 @@ android {
 
     signingConfigs {
         create("release") {
-            storeFile = rootProject.file(
-                releaseSigningProperties.getProperty("storeFile")
-                    ?: throw GradleException("Missing storeFile in ${releaseSigningPropertiesFile.path}")
-            )
-            storePassword = releaseSigningProperties.getProperty("storePassword")
-                ?: throw GradleException("Missing storePassword in ${releaseSigningPropertiesFile.path}")
-            keyAlias = releaseSigningProperties.getProperty("keyAlias")
-                ?: throw GradleException("Missing keyAlias in ${releaseSigningPropertiesFile.path}")
-            keyPassword = releaseSigningProperties.getProperty("keyPassword")
-                ?: throw GradleException("Missing keyPassword in ${releaseSigningPropertiesFile.path}")
+            storeFile = releaseStoreFile
+            storePassword = releaseStorePassword
+            keyAlias = releaseKeyAlias
+            keyPassword = releaseKeyPassword
         }
     }
 
