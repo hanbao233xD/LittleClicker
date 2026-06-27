@@ -6,23 +6,19 @@ plugins {
     id("org.jetbrains.kotlin.plugin.compose")
 }
 
-val releaseStoreFile: java.io.File
-val releaseStorePassword: String
-val releaseKeyAlias: String
-val releaseKeyPassword: String
+var releaseStoreFile: java.io.File
+var releaseStorePassword: String
+var releaseKeyAlias: String
+var releaseKeyPassword: String
 
-val envKeystoreBase64 = System.getenv("SIGNING_KEYSTORE_BASE64")
+val envKeystorePath = System.getenv("SIGNING_KEYSTORE_PATH")
 val envStorePassword = System.getenv("SIGNING_STORE_PASSWORD")
 val envKeyAlias = System.getenv("SIGNING_KEY_ALIAS")
 val envKeyPassword = System.getenv("SIGNING_KEY_PASSWORD")
 
-if (envKeystoreBase64 != null && envStorePassword != null && envKeyAlias != null && envKeyPassword != null) {
-    // CI 环境：从 base64 解码生成临时 keystore 文件
-    val keystoreBytes = java.util.Base64.getDecoder().decode(envKeystoreBase64)
-    val tempKeystoreFile = rootProject.file("build/tmp-release-keystore.jks")
-    tempKeystoreFile.parentFile.mkdirs()
-    tempKeystoreFile.writeBytes(keystoreBytes)
-    releaseStoreFile = tempKeystoreFile
+if (envKeystorePath != null && envStorePassword != null && envKeyAlias != null && envKeyPassword != null) {
+    // CI 环境：从环境变量读取 keystore 文件路径（由 workflow 提前解码生成）
+    releaseStoreFile = rootProject.file(envKeystorePath)
     releaseStorePassword = envStorePassword
     releaseKeyAlias = envKeyAlias
     releaseKeyPassword = envKeyPassword
