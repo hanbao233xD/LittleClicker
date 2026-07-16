@@ -13,6 +13,12 @@ import android.widget.LinearLayout
 import android.widget.NumberPicker
 import android.widget.TextView
 import android.widget.Toast
+import androidx.compose.animation.core.LinearEasing
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -51,6 +57,7 @@ import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -218,8 +225,42 @@ internal fun AutoClickScreen(
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(4.dp)
             ) {
+                val infiniteTransition = rememberInfiniteTransition(label = "shimmer")
+                val shimmerProgress by infiniteTransition.animateFloat(
+                    initialValue = -1f,
+                    targetValue = 2f,
+                    animationSpec = infiniteRepeatable(
+                        animation = tween(1500, easing = LinearEasing),
+                        repeatMode = RepeatMode.Restart
+                    ),
+                    label = "shimmerProgress"
+                )
+
                 AndroidView(
-                    modifier = Modifier.size(titleIconSize),
+                    modifier = Modifier
+                        .size(titleIconSize)
+                        .clip(RoundedCornerShape(20))
+                        .drawWithContent {
+                            drawContent()
+                            val width = size.width
+                            val height = size.height
+                            val offset = shimmerProgress * (width * 2) - width
+                            
+                            drawRect(
+                                brush = Brush.linearGradient(
+                                    colors = listOf(
+                                        Color.Transparent,
+                                        Color.White.copy(alpha = 0.2f),
+                                        Color.White.copy(alpha = 0.6f),
+                                        Color.White.copy(alpha = 0.2f),
+                                        Color.Transparent
+                                    ),
+                                    start = androidx.compose.ui.geometry.Offset(offset, 0f),
+                                    end = androidx.compose.ui.geometry.Offset(offset + width, height)
+                                ),
+                                blendMode = androidx.compose.ui.graphics.BlendMode.Plus
+                            )
+                        },
                     factory = { viewContext ->
                         ImageView(viewContext).apply {
                             scaleType = ImageView.ScaleType.FIT_CENTER
@@ -243,7 +284,28 @@ internal fun AutoClickScreen(
                         }
                     },
                     style = MiuixTheme.textStyles.title1,
-                    fontWeight = FontWeight.Bold
+                    fontWeight = FontWeight.Bold,
+                    modifier = Modifier.drawWithContent {
+                        drawContent()
+                        val width = size.width
+                        val height = size.height
+                        val offset = shimmerProgress * (width * 2) - width
+
+                        drawRect(
+                            brush = Brush.linearGradient(
+                                colors = listOf(
+                                    Color.Transparent,
+                                    Color.White.copy(alpha = 0.2f),
+                                    Color.White.copy(alpha = 0.6f),
+                                    Color.White.copy(alpha = 0.2f),
+                                    Color.Transparent
+                                ),
+                                start = androidx.compose.ui.geometry.Offset(offset, 0f),
+                                end = androidx.compose.ui.geometry.Offset(offset + width, height)
+                            ),
+                            blendMode = androidx.compose.ui.graphics.BlendMode.SrcAtop
+                        )
+                    }
                 )
             }
 
