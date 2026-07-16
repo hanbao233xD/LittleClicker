@@ -1,6 +1,39 @@
 # LittleClicker 实现记录
 
-最后更新：2026-06-18
+最后更新：2026-07-16
+
+## 2026-07-16（首页标题渐变效果）
+- `AutoClickScreen` 的“定时点击器Ultra”标题仅对“Ultra”部分应用横向渐变，“定时点击器”保留主题默认文字颜色。
+- 浅色主题使用蓝紫粉渐变，深色主题提高颜色亮度，保证标题辨识度。
+- 保留 miuix `title1` 字体规格及粗体字重，通过 `AnnotatedString` 的局部 `SpanStyle` 设置渐变画刷。
+- `:app:assembleDebug` 编译通过，真机安装与启动正常；截图确认浅色主题渐变生效，logcat 未发现启动崩溃。
+
+## 2026-07-16（首次使用用户协议确认）
+- 需求实现：
+  - 首次进入应用时使用 miuix `WindowDialog` 展示用户协议，占位正文支持滚动；
+  - 左侧“取消”退出应用，右侧强调色“确认”强制等待 `5s` 后启用；
+  - 确认后在 `filesDir` 创建 `user_agreement_accepted_v1.marker`，后续启动不再重复确认。
+- 代码改动：
+  - 新增 `UserAgreementStore`，使用版本化原子标记文件保存同意状态，并提供创建失败结果；
+  - 新增可复用 `UserAgreementGate`，覆盖主页面、动作管理和外部配置导入入口；
+  - 协议正文迁移到 `res/raw/user_agreement.txt`，使用 UTF-8 `readText()` 原样读取真实换行，不再在 XML 字符串中手写 `\n`；
+  - `WindowDialog.onDismissRequest` 改为空回调，黑色遮罩只阻断底层操作，不再触发 `finishAffinity()`；
+  - `MainActivity` 将系统媒体权限请求延后至协议确认后，并复用幂等调度避免重复申请；
+  - 为 miuix 0.8.7 `WindowDialog` 补充 `NavigationEventDispatcherOwner`，同时兼容旧版 Android 返回键与 Android 13+ `OnBackInvoked` 输入。
+- 测试补充：
+  - 新增 `UserAgreementStoreTest`，覆盖标记创建、重复创建和私有目录不可用失败分支。
+- 验证结果：
+  - `:app:testDebugUnitTest` 与 `:app:assembleDebug` 通过；
+  - 真机验证首次倒计时、倒计时期间点击无效、确认后创建标记、确认后才申请媒体权限、二次启动不再显示协议；
+  - 真机验证外部配置入口同样显示协议，返回键退出且不创建标记，点击黑色遮罩不会关闭弹窗或应用；logcat 无新增崩溃。
+
+## 2026-07-16（移除首页底栏上方多余空白）
+- 问题修复：
+  - 首页滚动列表在 `Scaffold` 底栏内容边距之外又统一增加了 `16dp` 外边距，导致底栏上方出现一条明显空白区域。
+- 代码改动：
+  - `AutoClickScreen`：保留列表顶部与左右 `16dp` 间距，移除额外的底部 `16dp` 间距，让内容区域与底部导航栏自然衔接。
+- 验证结果：
+  - `git diff --check`、`:app:testDebugUnitTest` 与 `:app:assembleDebug` 通过。
 
 ## 2026-06-18（运行一次模式支持运行次数）
 - 需求实现：

@@ -61,8 +61,10 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -136,6 +138,13 @@ internal fun AutoClickScreen(
     } else {
         listOf(Color(0xFFF5F6FA), Color(0xFFEFF3FF))
     }
+    val titleGradient = Brush.horizontalGradient(
+        colors = if (isDarkTheme) {
+            listOf(Color(0xFF82B1FF), Color(0xFFB89CFF), Color(0xFFFFA8C5))
+        } else {
+            listOf(Color(0xFF2676E8), Color(0xFF7B5CFF), Color(0xFFE85D9E))
+        }
+    )
     val cardContainerColor = MiuixTheme.colorScheme.surfaceContainer
 
     val nowAlignedMillis by produceState(initialValue = AutoClickCoordinator.currentAlignedNowMillis()) {
@@ -198,7 +207,7 @@ internal fun AutoClickScreen(
                 )
             )
             .padding(innerPadding)
-            .padding(16.dp),
+            .padding(start = 16.dp, top = 16.dp, end = 16.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
         item {
@@ -227,7 +236,12 @@ internal fun AutoClickScreen(
                     }
                 )
                 Text(
-                    text = "定时点击器Ultra",
+                    text = buildAnnotatedString {
+                        append("定时点击器")
+                        withStyle(SpanStyle(brush = titleGradient)) {
+                            append("Ultra")
+                        }
+                    },
                     style = MiuixTheme.textStyles.title1,
                     fontWeight = FontWeight.Bold
                 )

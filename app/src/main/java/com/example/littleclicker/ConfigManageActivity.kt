@@ -9,6 +9,7 @@ import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
+import com.example.littleclicker.agreement.UserAgreementGate
 import com.example.littleclicker.autoclick.AutoClickCoordinator
 import com.example.littleclicker.ui.ConfigManageScreen
 import top.yukonga.miuix.kmp.theme.MiuixTheme
@@ -25,10 +26,12 @@ class ConfigManageActivity : ComponentActivity() {
         setContent {
             val colors = if (isSystemInDarkTheme()) darkColorScheme() else lightColorScheme()
             MiuixTheme(colors = colors) {
-                ConfigManageScreen(
-                    onBack = { finish() },
-                    importUri = importUri
-                )
+                UserAgreementGate(onCancel = { finishAffinity() }) {
+                    ConfigManageScreen(
+                        onBack = { finish() },
+                        importUri = importUri
+                    )
+                }
             }
         }
     }

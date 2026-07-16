@@ -26,6 +26,8 @@ import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import com.example.littleclicker.autoclick.AutoClickCoordinator
+import com.example.littleclicker.agreement.UserAgreementGate
+import com.example.littleclicker.agreement.UserAgreementStore
 import com.example.littleclicker.update.AppNoticeChecker
 import com.example.littleclicker.update.AppNoticeInfo
 import com.example.littleclicker.update.AppUpdateChecker
@@ -50,15 +52,25 @@ class MainActivity : ComponentActivity() {
         setContent {
             val colors = if (isSystemInDarkTheme()) darkColorScheme() else lightColorScheme()
             MiuixTheme(colors = colors) {
-                AppRoot()
+                UserAgreementGate(
+                    onCancel = { finishAffinity() },
+                    onAccepted = { scheduleStoragePermissionRequestIfNeeded() },
+                ) {
+                    AppRoot()
+                }
             }
         }
     }
 
     override fun onWindowFocusChanged(hasFocus: Boolean) {
         super.onWindowFocusChanged(hasFocus)
-        if (!hasFocus || hasRequestedStoragePermission) return
+        if (!hasFocus || !UserAgreementStore.isAccepted(this)) return
 
+        scheduleStoragePermissionRequestIfNeeded()
+    }
+
+    private fun scheduleStoragePermissionRequestIfNeeded() {
+        if (hasRequestedStoragePermission) return
         hasRequestedStoragePermission = true
         window.decorView.postDelayed(
             { requestStoragePermissionsIfNeeded() },

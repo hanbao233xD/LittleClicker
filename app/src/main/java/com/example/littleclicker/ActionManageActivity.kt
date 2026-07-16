@@ -4,6 +4,7 @@ import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.foundation.isSystemInDarkTheme
+import com.example.littleclicker.agreement.UserAgreementGate
 import com.example.littleclicker.autoclick.AutoClickCoordinator
 import com.example.littleclicker.ui.ActionManageScreen
 import top.yukonga.miuix.kmp.theme.MiuixTheme
@@ -17,9 +18,11 @@ class ActionManageActivity : ComponentActivity() {
         setContent {
             val colors = if (isSystemInDarkTheme()) darkColorScheme() else lightColorScheme()
             MiuixTheme(colors = colors) {
-                ActionManageScreen(
-                    onBack = { finish() }
-                )
+                UserAgreementGate(onCancel = { finishAffinity() }) {
+                    ActionManageScreen(
+                        onBack = { finish() }
+                    )
+                }
             }
         }
     }
