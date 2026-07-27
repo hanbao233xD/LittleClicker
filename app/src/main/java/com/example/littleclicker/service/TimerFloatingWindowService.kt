@@ -26,9 +26,11 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.ComposeView
 import androidx.compose.ui.platform.ViewCompositionStrategy
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleRegistry
 import androidx.lifecycle.LifecycleService
@@ -39,6 +41,7 @@ import androidx.savedstate.SavedStateRegistryOwner
 import androidx.savedstate.setViewTreeSavedStateRegistryOwner
 import com.example.littleclicker.autoclick.AutoClickCoordinator
 import com.example.littleclicker.ui.formatHmsWithTenths
+import com.example.littleclicker.ui.isAccessibilityServiceEnabled
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -62,6 +65,7 @@ class TimerFloatingWindowService : LifecycleService() {
     override fun onCreate() {
         super.onCreate()
         AutoClickCoordinator.initialize(this)
+        TimerFloatingWindowPreferences.initialize(this)
         viewTreeSavedStateOwner = OverlaySavedStateOwner()
     }
 
@@ -109,6 +113,7 @@ class TimerFloatingWindowService : LifecycleService() {
                 MiuixTheme(colors = if (isDarkTheme) darkColorScheme() else lightColorScheme()) {
                     val profile by AutoClickCoordinator.profile.collectAsState()
                     val runtime by AutoClickCoordinator.runtime.collectAsState()
+                    val fontSizeSp by TimerFloatingWindowPreferences.fontSizeSp.collectAsState()
                     val nowMillis by produceState(initialValue = AutoClickCoordinator.currentAlignedNowMillis()) {
                         while (true) {
                             value = AutoClickCoordinator.currentAlignedNowMillis()
@@ -117,10 +122,11 @@ class TimerFloatingWindowService : LifecycleService() {
                     }
                     val line = buildString {
                         append(formatHmsWithTenths(nowMillis))
-                        append("  设定时间:")
-                        append(profile.scheduleRuleHms ?: "--:--:--")
-                        append("  运行状态:")
-                        append(runtime.state)
+                        if (isAccessibilityServiceEnabled(this@TimerFloatingWindowService)) {
+                            append("  设定时间:")
+                            append(profile.scheduleRuleHms ?: "--:--:--")
+                            append("("+runtime.state+")")
+                        }
                     }
 
                     Box(
@@ -129,7 +135,7 @@ class TimerFloatingWindowService : LifecycleService() {
                                 overlaySize = size
                                 updateOverlayOffset(overlayOffset)
                             }
-                            .widthIn(min = 320.dp, max = 680.dp)
+                            .widthIn(max = 680.dp)
                             .background(overlayBgColor, RoundedCornerShape(12.dp))
                             .border(1.dp, overlayBorderColor, RoundedCornerShape(12.dp))
                             .pointerInput(Unit) {
@@ -146,7 +152,9 @@ class TimerFloatingWindowService : LifecycleService() {
                     ) {
                         Text(
                             text = line,
-                            color = Color.White
+                            color = Color.White,
+                            fontSize = fontSizeSp.sp,
+                            fontWeight = timerOverlayFontWeight(fontSizeSp),
                         )
                     }
                 }
@@ -300,5 +308,14 @@ class TimerFloatingWindowService : LifecycleService() {
         fun markDestroyed() {
             lifecycleRegistry.currentState = Lifecycle.State.DESTROYED
         }
+    }
+}
+
+private fun timerOverlayFontWeight(fontSizeSp: Float): FontWeight {
+    return when {
+        fontSizeSp >= 28f -> FontWeight.Bold
+        fontSizeSp >= 22f -> FontWeight.SemiBold
+        fontSizeSp >= 18f -> FontWeight.Medium
+        else -> FontWeight.Normal
     }
 }

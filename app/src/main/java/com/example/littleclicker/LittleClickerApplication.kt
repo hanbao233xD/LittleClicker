@@ -7,5 +7,6 @@ class LittleClickerApplication : Application() {
     override fun onCreate() {
         super.onCreate()
         AutoClickCoordinator.initialize(this)
+        AutoClickCoordinator.clearScheduleTime()
     }
 }

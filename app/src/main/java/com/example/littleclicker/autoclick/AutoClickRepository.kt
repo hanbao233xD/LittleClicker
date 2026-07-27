@@ -106,7 +106,8 @@ object AutoClickRepository {
             name = profile.name.ifBlank { "未命名配置" },
             ntpServerHost = profile.ntpServerHost.ifBlank { DEFAULT_NTP_SERVER_HOST },
             scheduleAdvanceMs = profile.scheduleAdvanceMs.coerceAtLeast(0L),
-            scheduleRuleHms = normalizeScheduleRuleHms(profile.scheduleRuleHms),
+            scheduleRuleHms = null,
+            startAtMillis = null,
             updatedAt = System.currentTimeMillis()
         )
 

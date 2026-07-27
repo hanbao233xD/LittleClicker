@@ -153,8 +153,7 @@ object AutoClickCoordinator {
         return runCatching {
             val parsed = AutoClickRepository.profileFromJson(json)
             val now = System.currentTimeMillis()
-            val currentProfiles = AutoClickRepository.listProfiles(context)
-            val existingNames = currentProfiles.map { it.name }.toSet()
+            AutoClickRepository.listProfiles(context)
             val finalName = "${parsed.name}_导入"
             val newProfile = parsed.copy(
                 id = generateProfileId(now),
@@ -277,28 +276,6 @@ object AutoClickCoordinator {
         }
     }
 
-    fun discardUnsavedChanges(): Result<AutoClickProfile> {
-        val context = appContext ?: return Result.failure(IllegalStateException("Coordinator not initialized"))
-
-        return runCatching {
-            val activeId = AutoClickRepository.getActiveProfileId(context)
-            val restored = if (!activeId.isNullOrBlank()) {
-                AutoClickRepository.loadProfile(context, activeId)
-            } else {
-                null
-            } ?: AutoClickRepository.loadActiveProfile(context)
-            _profile.value = restored
-            refreshProfiles()
-            refreshTimeSyncServerFromProfile()
-            restoreScheduleForCurrentProfile()
-            restored
-        }
-    }
-
-    fun addPoint() {
-        addAction(AutoClickActionType.Click)
-    }
-
     fun addAction(actionType: AutoClickActionType): AutoClickPoint {
         var created: AutoClickPoint? = null
         updateProfile { current ->
@@ -310,16 +287,6 @@ object AutoClickCoordinator {
             current.copy(points = current.points + next)
         }
         return requireNotNull(created) { "新增动作失败：未生成动作点" }
-    }
-
-    fun addRecordedTap(x: Int, y: Int): AutoClickPoint? {
-        return addRecordedAction(
-            actionType = AutoClickActionType.Click,
-            startX = x,
-            startY = y,
-            endX = null,
-            endY = null
-        )
     }
 
     fun addRecordedAction(
@@ -451,44 +418,6 @@ object AutoClickCoordinator {
             onSuccess = { Result.success(true) },
             onFailure = { Result.failure(it) }
         )
-    }
-
-    fun movePointBy(pointId: Int, dx: Int, dy: Int) {
-        if (dx == 0 && dy == 0) return
-        updateProfile { current ->
-            current.copy(
-                points = current.points.map { point ->
-                    if (point.id != pointId) {
-                        point
-                    } else {
-                        point.copy(
-                            x = (point.x + dx).coerceAtLeast(0),
-                            y = (point.y + dy).coerceAtLeast(0)
-                        )
-                    }
-                }
-            )
-        }
-    }
-
-    fun setPointPosition(pointId: Int, x: Int, y: Int) {
-        updateProfile { current ->
-            current.copy(
-                points = current.points.map { point ->
-                    if (point.id != pointId) {
-                        point
-                    } else {
-                        val safeX = x.coerceAtLeast(0)
-                        val safeY = y.coerceAtLeast(0)
-                        val dx = safeX - point.x
-                        val dy = safeY - point.y
-                        val movedEndX = point.endX?.plus(dx)?.coerceAtLeast(0)
-                        val movedEndY = point.endY?.plus(dy)?.coerceAtLeast(0)
-                        point.copy(x = safeX, y = safeY, endX = movedEndX, endY = movedEndY)
-                    }
-                }
-            )
-        }
     }
 
     fun updatePointConfig(
@@ -678,7 +607,7 @@ object AutoClickCoordinator {
         updateProfile { current -> current.copy(startAtMillis = null, scheduleRuleHms = null) }
         _runtime.value = AutoClickRuntime(
             state = AutoClickRunState.Idle,
-            message = "已清除定时"
+            message = "检测到App重启，已清除定时"
         )
     }
 
@@ -717,27 +646,6 @@ object AutoClickCoordinator {
             scheduledAtMillis = target,
             rolledToNextDay = rolledToNextDay
         )
-    }
-
-    fun scheduleAt(startAtMillis: Long): Boolean {
-        if (startAtMillis <= currentAlignedNowMillis()) {
-            _runtime.value = AutoClickRuntime(
-                state = AutoClickRunState.Failed,
-                message = "定时时间已过期，请重新选择",
-                scheduledAtMillis = startAtMillis
-            )
-            return false
-        }
-
-        val calendar = Calendar.getInstance().apply { timeInMillis = startAtMillis }
-        val rule = formatHms(
-            hour = calendar.get(Calendar.HOUR_OF_DAY),
-            minute = calendar.get(Calendar.MINUTE),
-            second = calendar.get(Calendar.SECOND)
-        )
-        updateProfile { current -> current.copy(startAtMillis = startAtMillis, scheduleRuleHms = rule) }
-        armSchedule(startAtMillis)
-        return true
     }
 
     fun startNow(fromSchedule: Boolean = false): Boolean {
@@ -785,28 +693,6 @@ object AutoClickCoordinator {
             updateProfile { current -> current.copy(startAtMillis = null) }
         }
         return started
-    }
-
-    fun pause(): Boolean {
-        val paused = AutoClickAccessibilityService.pause()
-        if (paused) {
-            _runtime.value = AutoClickRuntime(
-                state = AutoClickRunState.Paused,
-                message = "自动点击已暂停"
-            )
-        }
-        return paused
-    }
-
-    fun resume(): Boolean {
-        val resumed = AutoClickAccessibilityService.resume()
-        if (resumed) {
-            _runtime.value = AutoClickRuntime(
-                state = AutoClickRunState.Running,
-                message = "自动点击继续执行"
-            )
-        }
-        return resumed
     }
 
     fun stop(): Boolean {

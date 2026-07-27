@@ -1,18 +1,14 @@
 package com.example.littleclicker.ui
 
-import android.app.DatePickerDialog
-import android.app.TimePickerDialog
 import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
 import android.net.Uri
-import android.os.Build
 import android.os.PowerManager
 import android.provider.Settings
 import android.widget.Toast
 import com.example.littleclicker.service.AutoClickAccessibilityService
 import java.text.SimpleDateFormat
-import java.util.Calendar
 import java.util.Locale
 import java.util.concurrent.TimeUnit
 
@@ -35,19 +31,14 @@ internal fun openAccessibilitySettings(context: Context) {
 }
 
 internal fun openBatteryOptimizationSettings(context: Context) {
-    val intent = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-        Intent(
-            Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS,
-            Uri.parse("package:${context.packageName}")
-        )
-    } else {
-        Intent(Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS)
-    }.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+    val intent = Intent(
+        Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS,
+        Uri.parse("package:${context.packageName}")
+    )
     context.startActivity(intent)
 }
 
 internal fun isIgnoringBatteryOptimizations(context: Context): Boolean {
-    if (Build.VERSION.SDK_INT < Build.VERSION_CODES.M) return true
     val powerManager = context.getSystemService(Context.POWER_SERVICE) as PowerManager
     return powerManager.isIgnoringBatteryOptimizations(context.packageName)
 }
@@ -79,6 +70,15 @@ internal fun ensureOverlayStartPermissions(context: Context): Boolean {
         return false
     }
     return true
+}
+
+/** 定时悬浮窗仅用于展示时间，无需无障碍服务即可启动。 */
+internal fun ensureTimerOverlayStartPermission(context: Context): Boolean {
+    if (Settings.canDrawOverlays(context)) return true
+
+    openOverlaySettings(context)
+    Toast.makeText(context, "请先授予悬浮窗权限", Toast.LENGTH_SHORT).show()
+    return false
 }
 
 internal fun requestRootAndEnableAccessibility(context: Context): RootAccessibilityEnableResult {
@@ -176,48 +176,6 @@ private fun runSuCommand(command: String, timeoutMs: Long): SuCommandResult? {
         stdout = stdout,
         stderr = stderr
     )
-}
-
-internal fun showDateTimePicker(
-    context: Context,
-    initialMillis: Long?,
-    onSelected: (Long) -> Unit,
-) {
-    val now = Calendar.getInstance()
-    val base = Calendar.getInstance().apply {
-        if (initialMillis != null) {
-            timeInMillis = initialMillis
-        }
-    }
-
-    DatePickerDialog(
-        context,
-        { _, year, month, dayOfMonth ->
-            TimePickerDialog(
-                context,
-                { _, hourOfDay, minute ->
-                    val selected = Calendar.getInstance().apply {
-                        set(Calendar.YEAR, year)
-                        set(Calendar.MONTH, month)
-                        set(Calendar.DAY_OF_MONTH, dayOfMonth)
-                        set(Calendar.HOUR_OF_DAY, hourOfDay)
-                        set(Calendar.MINUTE, minute)
-                        set(Calendar.SECOND, 0)
-                        set(Calendar.MILLISECOND, 0)
-                    }
-                    onSelected(selected.timeInMillis)
-                },
-                base.get(Calendar.HOUR_OF_DAY),
-                base.get(Calendar.MINUTE),
-                true
-            ).show()
-        },
-        base.get(Calendar.YEAR),
-        base.get(Calendar.MONTH),
-        base.get(Calendar.DAY_OF_MONTH)
-    ).apply {
-        datePicker.minDate = now.timeInMillis
-    }.show()
 }
 
 internal fun formatDateTime(timeMillis: Long): String {

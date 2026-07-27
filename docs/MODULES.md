@@ -194,10 +194,12 @@
 - 实现方法：
   - 文件：`app/src/main/java/com/example/littleclicker/service/TimerFloatingWindowService.kt`
   - 渲染：`WindowManager + ComposeView`。
-  - 样式：灰色半透明背景、圆角、可拖动。
-  - 文案：单行显示 `HH:mm:ss.S`、`设定时间`、`运行状态`。
+  - 样式：灰色半透明背景、圆角、可拖动；背景宽度随文字内容和字体大小自适应（最大 680dp）。
+  - 字体设置：在首页“定时”卡片通过 Miuix `Slider` 调整 12–32sp；字号变大时字重同步提升。
+  - 持久化：展示偏好独立存储在 `SharedPreferences` 文件 `timer_floating_window_preferences.xml`，不包含在点击配置中。
+  - 文案：未开启无障碍时仅显示 `HH:mm:ss.S`；开启无障碍后额外显示 `设定时间`、`运行状态`。
   - 主题：跟随系统深浅模式选择 Miuix 色板，保留灰色半透明视觉风格并提升边框可读性。
-  - 对外入口：`start(context)` / `stop(context)` 与 `overlayVisible` 状态流。
+  - 对外入口：`start(context)` / `stop(context)` 与 `overlayVisible` 状态流；启动仅要求悬浮窗权限。
 
 ## 15. 应用更新与公告检查模块（AppUpdateChecker / AppNoticeChecker + AutoClickScreen 顶部 Banner）
 - 作用：应用启动时检查线上版本与公告 Banner，并在首页顶部提示可点击入口。

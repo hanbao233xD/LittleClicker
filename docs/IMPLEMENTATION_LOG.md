@@ -1201,3 +1201,40 @@
     - 横竖屏切换后，允许保留超出当前屏幕可视区的动作坐标，不再自动移动到屏幕中间或左侧。
 - 验证结果：
   - 待执行：`./gradlew :app:compileDebugKotlin --no-daemon`
+
+## 2026-07-27（定时悬浮窗支持无无障碍权限使用）
+- 需求实现：
+  - 定时悬浮窗不再要求用户开启无障碍服务；
+  - 未开启无障碍时，悬浮窗仅显示当前时间；开启后才显示设定时间和运行状态。
+- 修复内容：
+  - `UiHelpers` 新增定时悬浮窗专用启动校验，仅检查悬浮窗权限；
+  - `AutoClickScreen` 的自动开启与开关入口改用该校验，并更新提示文案；
+  - `TimerFloatingWindowService` 根据无障碍授权状态动态控制扩展状态文案。
+- 验证结果：
+  - `./gradlew :app:compileDebugKotlin :app:testDebugUnitTest --no-daemon` 通过。
+  - `./gradlew :app:assembleDebug --no-daemon` 通过。
+  - 当前未连接 Android 设备，无法执行安装、logcat 捕捉和启动联调。
+
+## 2026-07-27（定时悬浮窗背景自适应文字宽度）
+- 需求实现：
+  - 定时悬浮窗的背景宽度随显示文字和系统字体大小动态调整，不再保留过宽的固定最小宽度。
+- 修复内容：
+  - `TimerFloatingWindowService` 移除悬浮窗容器的 `320dp` 最小宽度，仅保留 `680dp` 最大宽度限制。
+- 验证结果：
+  - `./gradlew :app:compileDebugKotlin :app:testDebugUnitTest :app:assembleDebug --no-daemon` 通过。
+  - 当前未连接 Android 设备，无法执行安装、logcat 捕捉和启动联调。
+
+## 2026-07-27（定时悬浮窗字体大小独立配置）
+- 需求实现：
+  - 支持在首页调节定时悬浮窗字体大小，字号变大时字重同步增强；
+  - 字体设置独立于点击配置，保存到单独的本地配置文件。
+- 修复内容：
+  - 新增 `TimerFloatingWindowPreferences`，通过 `timer_floating_window_preferences.xml` 保存 12–32sp 字号；
+  - `AutoClickScreen` 新增 Miuix `Slider`，以 1sp 步长实时调整并保存字号；
+  - `TimerFloatingWindowService` 订阅字号设置，并按四档字重同步显示。
+  - 新增 `TimerFloatingWindowPreferencesTest` 覆盖字号取整与范围裁剪。
+- 验证结果：
+  - `./gradlew :app:compileDebugKotlin :app:testDebugUnitTest :app:assembleDebug --no-daemon` 通过。
+  - `adb install -r app/build/outputs/apk/debug/app-debug.apk` 安装成功。
+  - 清空 logcat 后启动应用，进程正常运行，未检出 `FATAL EXCEPTION` 或应用进程崩溃日志。
+  - UIAutomator 验证首页“定时”卡片已显示“悬浮窗字体大小”、`16sp` 默认值和 Slider 控件。

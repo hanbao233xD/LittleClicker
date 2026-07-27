@@ -62,7 +62,7 @@ android {
 
     defaultConfig {
         applicationId = "com.example.littleclicker"
-        minSdk = 24
+        minSdk = 26
         targetSdk = 36
         versionCode = 13
         versionName = "2.1"

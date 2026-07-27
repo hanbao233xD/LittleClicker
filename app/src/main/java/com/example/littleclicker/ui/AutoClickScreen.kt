@@ -89,6 +89,7 @@ import com.example.littleclicker.autoclick.AutoClickRecordingMode
 import com.example.littleclicker.autoclick.TimeSyncState
 import com.example.littleclicker.service.FloatingWindowService
 import com.example.littleclicker.service.TimerFloatingWindowService
+import com.example.littleclicker.service.TimerFloatingWindowPreferences
 import com.example.littleclicker.update.AppNoticeInfo
 import com.example.littleclicker.update.AppUpdateInfo
 import kotlinx.coroutines.Dispatchers
@@ -102,11 +103,12 @@ import top.yukonga.miuix.kmp.basic.Card
 import top.yukonga.miuix.kmp.basic.CardDefaults
 import top.yukonga.miuix.kmp.basic.Icon
 import top.yukonga.miuix.kmp.basic.SmallTitle
-import top.yukonga.miuix.kmp.basic.Switch
+import top.yukonga.miuix.kmp.basic.Slider
 import top.yukonga.miuix.kmp.basic.Text
 import top.yukonga.miuix.kmp.extra.SuperSwitch
 import top.yukonga.miuix.kmp.extra.WindowDropdown
 import top.yukonga.miuix.kmp.theme.MiuixTheme
+import kotlin.math.roundToInt
 
 private data class PermissionStatus(
     val title: String,
@@ -115,20 +117,13 @@ private data class PermissionStatus(
     val onClick: () -> Unit,
 )
 
-@Composable
-internal fun AutoClickScreen(innerPadding: PaddingValues) {
-    AutoClickScreen(
-        innerPadding = innerPadding,
-        updateInfo = null,
-        noticeInfo = emptyList()
-    )
-}
 
 @Composable
 internal fun AutoClickScreen(
     innerPadding: PaddingValues,
     updateInfo: AppUpdateInfo?,
     noticeInfo: List<AppNoticeInfo>,
+
 ) {
     val context = LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current
@@ -137,6 +132,8 @@ internal fun AutoClickScreen(
     val profile by AutoClickCoordinator.profile.collectAsState()
     val overlayEnabled by FloatingWindowService.overlayVisible.collectAsState()
     val timerOverlayEnabled by TimerFloatingWindowService.overlayVisible.collectAsState()
+    TimerFloatingWindowPreferences.initialize(context)
+    val timerOverlayFontSizeSp by TimerFloatingWindowPreferences.fontSizeSp.collectAsState()
     val runtime by AutoClickCoordinator.runtime.collectAsState()
     val timeSync by AutoClickCoordinator.timeSync.collectAsState()
     val isDarkTheme = isSystemInDarkTheme()
@@ -245,7 +242,7 @@ internal fun AutoClickScreen(
                             val width = size.width
                             val height = size.height
                             val offset = shimmerProgress * (width * 2) - width
-                            
+
                             drawRect(
                                 brush = Brush.linearGradient(
                                     colors = listOf(
@@ -256,7 +253,10 @@ internal fun AutoClickScreen(
                                         Color.Transparent
                                     ),
                                     start = androidx.compose.ui.geometry.Offset(offset, 0f),
-                                    end = androidx.compose.ui.geometry.Offset(offset + width, height)
+                                    end = androidx.compose.ui.geometry.Offset(
+                                        offset + width,
+                                        height
+                                    )
                                 ),
                                 blendMode = androidx.compose.ui.graphics.BlendMode.Plus
                             )
@@ -331,24 +331,25 @@ internal fun AutoClickScreen(
         }
 
         item {
-            val accessibilityEnabled = statuses.any { it.title == "无障碍服务" && it.granted }
-            PermissionStatusSummaryCard(
-                allReady = allPermissionsReady,
-                isDarkTheme = isDarkTheme,
-                accessibilityEnabled = accessibilityEnabled,
-                onRootClick = {
-                    coroutineScope.launch {
-                        val result = withContext(Dispatchers.IO) {
-                            requestRootAndEnableAccessibility(context)
-                        }
-                        Toast.makeText(context, result.message, Toast.LENGTH_SHORT).show()
-                        if (result.success) {
-                            refreshToken++
+
+            if (!allPermissionsReady) {
+                val accessibilityEnabled = statuses.any { it.title == "无障碍服务" && it.granted }
+                PermissionStatusSummaryCard(
+                    allReady = allPermissionsReady,
+                    isDarkTheme = isDarkTheme,
+                    accessibilityEnabled = accessibilityEnabled,
+                    onRootClick = {
+                        coroutineScope.launch {
+                            val result = withContext(Dispatchers.IO) {
+                                requestRootAndEnableAccessibility(context)
+                            }
+                            Toast.makeText(context, result.message, Toast.LENGTH_SHORT).show()
+                            if (result.success) {
+                                refreshToken++
+                            }
                         }
                     }
-                }
-            )
-            if (!allPermissionsReady) {
+                )
                 Spacer(modifier = Modifier.height(6.dp))
                 Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                     pendingStatuses.forEach { status ->
@@ -360,7 +361,75 @@ internal fun AutoClickScreen(
                 }
             }
         }
+        item {
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                cornerRadius = 20.dp,
 
+                colors = CardDefaults.defaultColors(
+                    color = cardContainerColor,
+                    contentColor = MiuixTheme.colorScheme.onSurfaceContainer
+                )
+            )
+            {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(14.dp)
+
+                ){
+                    Text("悬浮时间")
+                    SuperSwitch(
+                        checked = timerOverlayEnabled,
+                        onCheckedChange = { shouldEnable ->
+                            if (!shouldEnable) {
+                                TimerFloatingWindowService.stop(context)
+                                Toast.makeText(context, "定时悬浮窗已关闭", Toast.LENGTH_SHORT).show()
+                            } else {
+                                if (!ensureTimerOverlayStartPermission(context)) {
+                                    return@SuperSwitch
+                                }
+                                TimerFloatingWindowService.start(context)
+                                Toast.makeText(context, "定时悬浮窗已开启", Toast.LENGTH_SHORT).show()
+                            }
+                        },
+                        title="悬浮时间",
+                        summary="不开无障碍也能用"
+                    )
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 10.dp),
+                        verticalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
+                        Row (
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(start = 10.dp),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ){
+                            Text("悬浮窗字体大小", fontWeight = FontWeight.SemiBold)
+                            Text(
+                                text = "${timerOverlayFontSizeSp.roundToInt()}sp",
+                                color = MiuixTheme.colorScheme.onBackgroundVariant
+                            )
+                        }
+                        Slider(
+                            value = timerOverlayFontSizeSp,
+                            onValueChange = {fontSizeSp ->
+                                TimerFloatingWindowPreferences.updateFontSizeSp(context, fontSizeSp)},
+                            modifier = Modifier.fillMaxWidth(),
+                            valueRange = TimerFloatingWindowPreferences.MIN_FONT_SIZE_SP..
+                                    TimerFloatingWindowPreferences.MAX_FONT_SIZE_SP,
+                            steps = (TimerFloatingWindowPreferences.MAX_FONT_SIZE_SP -
+                                    TimerFloatingWindowPreferences.MIN_FONT_SIZE_SP).roundToInt() - 1,
+                            showKeyPoints = false,
+                        )
+                    }
+                }
+            }
+        }
         item {
             Card(
                 modifier = Modifier.fillMaxWidth(),
@@ -398,6 +467,7 @@ internal fun AutoClickScreen(
                         title = "悬浮窗开关",
                         summary = "从这里开始探索（点击小白条放大/缩小，长按移动位置）"
                     )
+
                     Button(
                         onClick = {
                             context.startActivity(Intent(context, ActionManageActivity::class.java))
@@ -445,48 +515,38 @@ internal fun AutoClickScreen(
                 runtimeLabel = "${runtime.state} ${runtime.message ?: ""}".trim(),
                 timeSync = timeSync,
                 scheduleRuleHms = profile.scheduleRuleHms,
-                timerOverlayEnabled = timerOverlayEnabled,
                 onPickTime = {
                     showHmsPickerDialog(
                         context = context,
                         initialMillis = nowAlignedMillis,
                         initialAdvanceMs = profile.scheduleAdvanceMs,
                         onSelected = { hour, minute, second, advanceMs ->
-                            AutoClickCoordinator.updateScheduleAdvanceMs(advanceMs)
-                            AutoClickCoordinator.saveProfile()
-                            val scheduleResult = AutoClickCoordinator.scheduleAtHms(hour, minute, second)
-                            val hmsLabel = String.format("%02d:%02d:%02d", hour, minute, second)
-                            val baseTip = if (scheduleResult.rolledToNextDay) {
-                                "设定时间已过期，已自动顺延到明天：$hmsLabel"
-                            } else {
-                                "定时已设置：$hmsLabel"
-                            }
-                            val tip = if (!timerOverlayEnabled) {
-                                if (ensureOverlayStartPermissions(context)) {
-                                    TimerFloatingWindowService.start(context)
-                                    "$baseTip，已自动开启定时悬浮窗"
+                            if(ensureOverlayStartPermissions(context)){
+                                AutoClickCoordinator.updateScheduleAdvanceMs(advanceMs)
+                                AutoClickCoordinator.saveProfile()
+                                val scheduleResult = AutoClickCoordinator.scheduleAtHms(hour, minute, second)
+                                val hmsLabel = String.format("%02d:%02d:%02d", hour, minute, second)
+                                val baseTip = if (scheduleResult.rolledToNextDay) {
+                                    "设定时间已过期，已自动顺延到明天：$hmsLabel"
                                 } else {
-                                    "$baseTip，请先完成权限后再开启定时悬浮窗"
+                                    "定时已设置：$hmsLabel"
                                 }
-                            } else {
-                                "$baseTip，定时悬浮窗已开启"
+
+                                if (!timerOverlayEnabled) {
+                                    TimerFloatingWindowService.start(context)
+                                }
+                                Toast.makeText(context, "${baseTip}，已自动开启悬浮时间", Toast.LENGTH_SHORT).show()
+                            }else{
+                                Toast.makeText(context, "请先授予无障碍权限后再定时", Toast.LENGTH_SHORT).show()
+                                return@showHmsPickerDialog
                             }
-                            Toast.makeText(context, tip, Toast.LENGTH_SHORT).show()
+
+
+
                         }
                     )
                 },
-                onToggleTimerOverlay = { shouldEnable ->
-                    if (!shouldEnable) {
-                        TimerFloatingWindowService.stop(context)
-                        Toast.makeText(context, "定时悬浮窗已关闭", Toast.LENGTH_SHORT).show()
-                    } else {
-                        if (!ensureOverlayStartPermissions(context)) {
-                            return@TimerCard
-                        }
-                        TimerFloatingWindowService.start(context)
-                        Toast.makeText(context, "定时悬浮窗已开启", Toast.LENGTH_SHORT).show()
-                    }
-                },
+
                 onConfigNtp = {
                     showNtpServerConfigDialog(
                         context = context,
@@ -497,6 +557,7 @@ internal fun AutoClickScreen(
                         }
                     )
                 },
+
                 isDarkTheme = isDarkTheme,
                 cardContainerColor = cardContainerColor
             )
@@ -604,7 +665,10 @@ private fun NoticeBannerCarousel(
                             Box(
                                 modifier = Modifier
                                     .padding(horizontal = 4.dp)
-                                    .size(if (index == pagerState.currentPage) 18.dp else 6.dp, 6.dp)
+                                    .size(
+                                        if (index == pagerState.currentPage) 18.dp else 6.dp,
+                                        6.dp
+                                    )
                                     .clip(CircleShape)
                                     .background(
                                         if (index == pagerState.currentPage) {
@@ -664,9 +728,7 @@ private fun TimerCard(
     runtimeLabel: String,
     timeSync: TimeSyncState,
     scheduleRuleHms: String?,
-    timerOverlayEnabled: Boolean,
     onPickTime: () -> Unit,
-    onToggleTimerOverlay: (Boolean) -> Unit,
     onConfigNtp: () -> Unit,
     isDarkTheme: Boolean,
     cardContainerColor: Color,
@@ -727,27 +789,8 @@ private fun TimerCard(
             ) {
                 Text("选择时间")
             }
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Column(
-                    modifier = Modifier.weight(1f),
-                    verticalArrangement = Arrangement.spacedBy(2.dp)
-                ) {
-                    Text("定时悬浮窗开关", fontWeight = FontWeight.SemiBold)
-                    Text(
-                        text = "显示当前时间与设定时间",
-                        color = MiuixTheme.colorScheme.onBackgroundVariant
-                    )
-                }
-                Spacer(modifier = Modifier.width(10.dp))
-                Switch(
-                    checked = timerOverlayEnabled,
-                    onCheckedChange = { shouldEnable -> onToggleTimerOverlay(shouldEnable) }
-                )
-            }
+
+
             Button(
                 onClick = onConfigNtp,
                 modifier = Modifier
@@ -780,7 +823,7 @@ private fun AdaptiveNowTimeText(
         val fitSp = computeFitFontSp(widthDp = widthDp, heightDp = heightDp)
         val content = buildAnnotatedString {
             append(nowHms)
-            pushStyle(androidx.compose.ui.text.SpanStyle(color = Color(0xFFEAA4BE)))
+            pushStyle(SpanStyle(color = Color(0xFFEAA4BE)))
             append(".$tenths")
             pop()
         }
