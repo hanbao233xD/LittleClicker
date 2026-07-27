@@ -1238,3 +1238,8 @@
   - `adb install -r app/build/outputs/apk/debug/app-debug.apk` 安装成功。
   - 清空 logcat 后启动应用，进程正常运行，未检出 `FATAL EXCEPTION` 或应用进程崩溃日志。
   - UIAutomator 验证首页“定时”卡片已显示“悬浮窗字体大小”、`16sp` 默认值和 Slider 控件。
+
+## 2026-07-27（发版产物固定输出目录）
+- `release.bat` 不再按日期创建子目录，发版后固定覆盖输出：
+  - `releases/app-release.aab`
+  - `releases/LittleClicker.apk`

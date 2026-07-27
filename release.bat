@@ -10,12 +10,7 @@ if errorlevel 1 (
     exit /b 1
 )
 
-for /f %%i in ('powershell -NoProfile -ExecutionPolicy Bypass -Command "Get-Date -Format yyyy-MM-dd"') do set "DATE_DIR=%%i"
-if "%DATE_DIR%"=="" (
-    echo Failed to resolve date directory.
-    exit /b 1
-)
-set "TARGET_DIR=%~dp0releases\%DATE_DIR%"
+set "TARGET_DIR=%~dp0releases"
 
 if not exist "%TARGET_DIR%" mkdir "%TARGET_DIR%"
 
