@@ -106,8 +106,7 @@ object AutoClickRepository {
             name = profile.name.ifBlank { "未命名配置" },
             ntpServerHost = profile.ntpServerHost.ifBlank { DEFAULT_NTP_SERVER_HOST },
             scheduleAdvanceMs = profile.scheduleAdvanceMs.coerceAtLeast(0L),
-            scheduleRuleHms = null,
-            startAtMillis = null,
+            scheduleRuleHms = normalizeScheduleRuleHms(profile.scheduleRuleHms),
             updatedAt = System.currentTimeMillis()
         )
 
@@ -124,6 +123,18 @@ object AutoClickRepository {
         val file = profileFile(context, profileId)
         if (!file.exists()) return false
         return runCatching { file.delete() }.getOrDefault(false)
+    }
+
+    fun clearAllScheduleTimes(context: Context) {
+        listProfiles(context).forEach { profile ->
+            if (profile.startAtMillis != null || profile.scheduleRuleHms != null) {
+                saveProfile(
+                    context,
+                    profile.copy(startAtMillis = null, scheduleRuleHms = null),
+                    makeActive = false
+                )
+            }
+        }
     }
 
     fun getActiveProfileId(context: Context): String? {

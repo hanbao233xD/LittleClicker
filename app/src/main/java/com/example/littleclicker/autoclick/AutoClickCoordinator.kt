@@ -3,6 +3,7 @@ package com.example.littleclicker.autoclick
 import android.content.Context
 import com.example.littleclicker.service.AutoClickAccessibilityService
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
@@ -35,6 +36,7 @@ object AutoClickCoordinator {
     private var initialized = false
     private var scheduleJob: Job? = null
     private var timeSyncJob: Job? = null
+    private var timeSyncTargetServer: String? = null
     private var autoSaveJob: Job? = null
     @Volatile
     private var overlayCoordinateOffsetX: Int = 0
@@ -56,6 +58,7 @@ object AutoClickCoordinator {
     private val _timeSync = MutableStateFlow(TimeSyncState())
     val timeSync: StateFlow<TimeSyncState> = _timeSync.asStateFlow()
 
+    @Synchronized
     fun initialize(context: Context) {
         val applicationContext = context.applicationContext
         appContext = applicationContext
@@ -66,7 +69,15 @@ object AutoClickCoordinator {
             return
         }
 
-        _profile.value = AutoClickRepository.loadActiveProfile(applicationContext)
+        GlobalPreferences.initialize(applicationContext)
+        val loaded = AutoClickRepository.loadActiveProfile(applicationContext)
+        // 必须在恢复计时任务之前清理，避免旧任务抢先触发。
+        _profile.value = if (GlobalPreferences.clearScheduleOnRestart.value) {
+            AutoClickRepository.clearAllScheduleTimes(applicationContext)
+            loaded.copy(startAtMillis = null, scheduleRuleHms = null)
+        } else {
+            loaded
+        }
         refreshProfiles()
         initialized = true
         refreshTimeSyncServerFromProfile()
@@ -99,6 +110,7 @@ object AutoClickCoordinator {
 
     fun saveAsNewProfile(name: String): Result<AutoClickProfile> {
         val context = appContext ?: return Result.failure(IllegalStateException("Coordinator not initialized"))
+        stop()
         val base = _profile.value
         val now = System.currentTimeMillis()
         val currentProfiles = AutoClickRepository.listProfiles(context)
@@ -106,6 +118,7 @@ object AutoClickCoordinator {
             id = generateProfileId(now),
             name = name.ifBlank { nextDefaultProfileName(currentProfiles) },
             startAtMillis = null,
+            scheduleRuleHms = null,
             updatedAt = now
         )
 
@@ -124,6 +137,7 @@ object AutoClickCoordinator {
 
     fun saveAsEmptyProfile(name: String): Result<AutoClickProfile> {
         val context = appContext ?: return Result.failure(IllegalStateException("Coordinator not initialized"))
+        stop()
         val base = _profile.value
         val now = System.currentTimeMillis()
         val currentProfiles = AutoClickRepository.listProfiles(context)
@@ -132,6 +146,7 @@ object AutoClickCoordinator {
             name = name.ifBlank { nextDefaultProfileName(currentProfiles) },
             points = emptyList(),
             startAtMillis = null,
+            scheduleRuleHms = null,
             updatedAt = now
         )
 
@@ -152,6 +167,7 @@ object AutoClickCoordinator {
         val context = appContext ?: return Result.failure(IllegalStateException("Coordinator not initialized"))
         return runCatching {
             val parsed = AutoClickRepository.profileFromJson(json)
+            stop()
             val now = System.currentTimeMillis()
             AutoClickRepository.listProfiles(context)
             val finalName = "${parsed.name}_导入"
@@ -159,6 +175,7 @@ object AutoClickCoordinator {
                 id = generateProfileId(now),
                 name = finalName,
                 startAtMillis = null,
+                scheduleRuleHms = null,
                 updatedAt = now
             )
             persistProfileToStorage(context, newProfile, makeActive = true)
@@ -177,14 +194,15 @@ object AutoClickCoordinator {
         val context = appContext ?: return Result.failure(IllegalStateException("Coordinator not initialized"))
 
         return runCatching {
+            val activeId = AutoClickRepository.getActiveProfileId(context)
+            val isDeletedActive = activeId == null || activeId == profileId || _profile.value.id == profileId
+            if (isDeletedActive) stop()
             val deleted = deleteProfileFromStorage(context, profileId)
             if (!deleted) {
                 throw IllegalArgumentException("删除失败：配置不存在")
             }
 
             val remaining = AutoClickRepository.listProfiles(context)
-            val activeId = AutoClickRepository.getActiveProfileId(context)
-            val isDeletedActive = activeId == null || activeId == profileId || _profile.value.id == profileId
 
             val nextActive = when {
                 remaining.isEmpty() -> {
@@ -214,7 +232,6 @@ object AutoClickCoordinator {
             }
 
             if (isDeletedActive) {
-                stop()
                 _profile.value = nextActive
                 refreshTimeSyncServerFromProfile()
                 syncNtpTime(force = false)
@@ -242,6 +259,8 @@ object AutoClickCoordinator {
             val duplicated = source.copy(
                 id = generateProfileId(now),
                 name = "${source.name}_副本",
+                startAtMillis = null,
+                scheduleRuleHms = null,
                 updatedAt = now
             )
             persistProfileToStorage(context, duplicated, makeActive = false)
@@ -547,6 +566,7 @@ object AutoClickCoordinator {
             it.copy(
                 serverHost = normalized,
                 isSynced = false,
+                offsetMillis = 0L,
                 delayMillis = null,
                 fallbackToDeviceTime = true,
                 errorMessage = "正在校时..."
@@ -555,15 +575,17 @@ object AutoClickCoordinator {
         syncNtpTime(force = true)
     }
 
+    @Synchronized
     fun syncNtpTime(force: Boolean = true) {
         val targetServer = _profile.value.ntpServerHost.ifBlank { DEFAULT_NTP_SERVER_HOST }
         if (!force && _timeSync.value.serverHost == targetServer && _timeSync.value.isSynced) {
             return
         }
         if (timeSyncJob?.isActive == true) {
-            if (!force) return
+            if (!force && timeSyncTargetServer == targetServer) return
             timeSyncJob?.cancel()
         }
+        timeSyncTargetServer = targetServer
 
         _timeSync.update {
             it.copy(
@@ -576,6 +598,7 @@ object AutoClickCoordinator {
             runCatching {
                 SntpClient.query(targetServer)
             }.onSuccess { result ->
+                if (_profile.value.ntpServerHost.ifBlank { DEFAULT_NTP_SERVER_HOST } != targetServer) return@launch
                 _timeSync.value = TimeSyncState(
                     serverHost = result.serverHost,
                     isSynced = true,
@@ -585,7 +608,13 @@ object AutoClickCoordinator {
                     errorMessage = null
                 )
             }.onFailure { error ->
-                _timeSync.value = TimeSyncState(
+                if (error is CancellationException) throw error
+                if (_profile.value.ntpServerHost.ifBlank { DEFAULT_NTP_SERVER_HOST } != targetServer) return@launch
+                val previous = _timeSync.value
+                _timeSync.value = if (previous.isSynced && previous.serverHost == targetServer) {
+                    // 刷新失败时保留此前偏移，避免临近触发时突然跳回本机时间。
+                    previous.copy(errorMessage = "重新校时失败，沿用上次校时")
+                } else TimeSyncState(
                     serverHost = targetServer,
                     isSynced = false,
                     offsetMillis = 0L,
@@ -605,6 +634,7 @@ object AutoClickCoordinator {
     fun clearScheduleTime() {
         cancelSchedule()
         updateProfile { current -> current.copy(startAtMillis = null, scheduleRuleHms = null) }
+        saveProfile()
         _runtime.value = AutoClickRuntime(
             state = AutoClickRunState.Idle,
             message = "检测到App重启，已清除定时"
@@ -612,8 +642,6 @@ object AutoClickCoordinator {
     }
 
     fun scheduleAtHms(hour: Int, minute: Int, second: Int): ScheduleAtHmsResult {
-        syncNtpTime(force = true)
-
         val safeHour = hour.coerceIn(0, 23)
         val safeMinute = minute.coerceIn(0, 59)
         val safeSecond = second.coerceIn(0, 59)
@@ -642,6 +670,9 @@ object AutoClickCoordinator {
             )
         }
         armSchedule(target)
+        // 一分钟以内的定时由计时循环立即校时，避免重复取消同一次请求。
+        if (target - now > 60_000L) syncNtpTime(force = true)
+        saveProfile()
         return ScheduleAtHmsResult(
             scheduledAtMillis = target,
             rolledToNextDay = rolledToNextDay
@@ -650,6 +681,7 @@ object AutoClickCoordinator {
 
     fun startNow(fromSchedule: Boolean = false): Boolean {
         cancelSchedule()
+        consumePendingSchedule(persistImmediately = false)
 
         if (_recording.value.isRecording) {
             _runtime.value = AutoClickRuntime(
@@ -689,19 +721,18 @@ object AutoClickCoordinator {
             )
         }
 
-        if (started) {
-            updateProfile { current -> current.copy(startAtMillis = null) }
-        }
         return started
     }
 
     fun stop(): Boolean {
+        val wasScheduled = _runtime.value.state == AutoClickRunState.Scheduled
         cancelSchedule()
+        consumePendingSchedule()
         if (_recording.value.isRecording) {
             _recording.value = AutoClickRecordingState(isRecording = false)
         }
         val stopped = AutoClickAccessibilityService.stop()
-        if (stopped) {
+        if (stopped || wasScheduled) {
             _runtime.value = AutoClickRuntime(
                 state = AutoClickRunState.Idle,
                 message = "自动点击已停止"
@@ -777,11 +808,16 @@ object AutoClickCoordinator {
         )
 
         scheduleJob = scope.launch {
+            val timeSyncGate = ScheduleTimeSyncGate()
             while (isActive) {
                 val delta = startAtMillis - currentAlignedNowMillis()
                 if (delta <= 0L) {
                     startNow(fromSchedule = true)
                     break
+                }
+                if (timeSyncGate.shouldSync(delta)) {
+                    // 校时独立异步执行，计时循环继续使用最新偏移判断实际触发点。
+                    syncNtpTime(force = true)
                 }
                 delay(minOf(SCHEDULE_POLL_INTERVAL_MS, delta))
             }
@@ -791,13 +827,24 @@ object AutoClickCoordinator {
     private fun refreshTimeSyncServerFromProfile() {
         val server = _profile.value.ntpServerHost.ifBlank { DEFAULT_NTP_SERVER_HOST }
         _timeSync.update {
-            if (it.serverHost == server) it else it.copy(serverHost = server)
+            if (it.serverHost == server) it else TimeSyncState(serverHost = server)
         }
     }
 
     private fun cancelSchedule() {
         scheduleJob?.cancel()
         scheduleJob = null
+    }
+
+    private fun consumePendingSchedule(persistImmediately: Boolean = true) {
+        if (_profile.value.startAtMillis == null) return
+        updateProfile { it.copy(startAtMillis = null) }
+        if (persistImmediately) {
+            saveProfile()
+        } else {
+            // 到点触发时先发出点击，磁盘写入在后台执行，避免保存配置拖慢触发。
+            scope.launch { autoSaveCurrentProfile() }
+        }
     }
 
     private fun startAutoSaveLoopIfNeeded() {

@@ -86,18 +86,19 @@ import com.example.littleclicker.ConfigManageActivity
 import com.example.littleclicker.R
 import com.example.littleclicker.autoclick.AutoClickCoordinator
 import com.example.littleclicker.autoclick.AutoClickRecordingMode
+import com.example.littleclicker.autoclick.GlobalPreferences
 import com.example.littleclicker.autoclick.TimeSyncState
 import com.example.littleclicker.service.FloatingWindowService
 import com.example.littleclicker.service.TimerFloatingWindowService
 import com.example.littleclicker.service.TimerFloatingWindowPreferences
 import com.example.littleclicker.update.AppNoticeInfo
 import com.example.littleclicker.update.AppUpdateInfo
+import com.example.littleclicker.tips.HitokotoClient
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.util.Calendar
-import kotlin.random.Random
 import top.yukonga.miuix.kmp.basic.Button
 import top.yukonga.miuix.kmp.basic.Card
 import top.yukonga.miuix.kmp.basic.CardDefaults
@@ -136,6 +137,7 @@ internal fun AutoClickScreen(
     val timerOverlayFontSizeSp by TimerFloatingWindowPreferences.fontSizeSp.collectAsState()
     val runtime by AutoClickCoordinator.runtime.collectAsState()
     val timeSync by AutoClickCoordinator.timeSync.collectAsState()
+    val clearScheduleOnRestart by GlobalPreferences.clearScheduleOnRestart.collectAsState()
     val isDarkTheme = isSystemInDarkTheme()
     val pageGradient = if (isDarkTheme) {
         listOf(Color(0xFF101219), Color(0xFF171B26))
@@ -194,7 +196,14 @@ internal fun AutoClickScreen(
     }
     val pendingStatuses = statuses.filterNot { it.granted }
     val allPermissionsReady = pendingStatuses.isEmpty()
-    val randomTip = remember(refreshToken) { context.loadRandomAutoClickTip() }
+    val softwareTip by produceState(initialValue = "正在获取一言…", key1 = refreshToken) {
+        val tip = HitokotoClient.fetchTip()
+        if (tip != null) {
+            value = tip
+        } else if (value == "正在获取一言…") {
+            value = "一言暂时无法获取，请稍后再试"
+        }
+    }
     val coroutineScope = rememberCoroutineScope()
     val recordModeItems = listOf("仅录制", "录制时穿透到应用")
     val selectedRecordModeIndex = when (profile.recordingMode) {
@@ -502,7 +511,7 @@ internal fun AutoClickScreen(
                         Text("配置管理")
                     }
                     Text(
-                        text = "提示：$randomTip",
+                        text = softwareTip,
                         color = MiuixTheme.colorScheme.onBackgroundVariant
                     )
                 }
@@ -564,8 +573,29 @@ internal fun AutoClickScreen(
         }
 
         item {
-            Spacer(modifier = Modifier.height(24.dp))
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                cornerRadius = 20.dp,
+                colors = CardDefaults.defaultColors(
+                    color = cardContainerColor,
+                    contentColor = MiuixTheme.colorScheme.onSurfaceContainer
+                )
+            ) {
+                Column(modifier = Modifier.fillMaxWidth().padding(14.dp)) {
+                    Text("全局配置", fontWeight = FontWeight.Bold)
+                    SuperSwitch(
+                        title = "重启后清除定时设置",
+                        summary = "关闭后不会在每次App重启后清除配置",
+                        checked = clearScheduleOnRestart,
+                        onCheckedChange = { enabled ->
+                            GlobalPreferences.updateClearScheduleOnRestart(context, enabled)
+                        }
+                    )
+                }
+            }
         }
+
+        item { Spacer(modifier = Modifier.height(24.dp)) }
     }
 }
 
@@ -736,7 +766,7 @@ private fun TimerCard(
     val nowHms = formatHms(nowAlignedMillis)
     val tenths = (nowAlignedMillis % 1000L + 1000L) % 1000L / 100L
     val syncLabel = if (timeSync.isSynced) {
-        "NTP已校准，延迟${timeSync.delayMillis ?: 0}ms"
+        timeSync.errorMessage ?: "NTP已校准，延迟${timeSync.delayMillis ?: 0}ms"
     } else {
         "NTP未校准，已回退本机时间"
     }
@@ -952,21 +982,6 @@ private fun showHmsPickerDialog(
             onSelected(hourPicker.value, minutePicker.value, secondPicker.value, advanceMs)
         }
         .show()
-}
-
-private fun Context.loadRandomAutoClickTip(): String {
-    val fallback = "本软件永久免费，欢迎使用。"
-    return runCatching {
-        resources.openRawResource(R.raw.autoclick_tips).bufferedReader().useLines { lines ->
-            lines
-                .map(String::trim)
-                .filter(String::isNotEmpty)
-                .toList()
-        }
-    }.getOrDefault(emptyList())
-        .takeIf { it.isNotEmpty() }
-        ?.let { tips -> tips[Random.nextInt(tips.size)] }
-        ?: fallback
 }
 
 @Composable

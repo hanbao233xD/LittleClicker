@@ -1,6 +1,6 @@
 # LittleClicker 模块说明
 
-最后更新：2026-07-16
+最后更新：2026-10-18
 
 ## 1. 构建模块（Gradle）
 - 作用：管理 Android App 编译、依赖与 Compose 构建能力。
@@ -67,6 +67,8 @@
   - 运行项：开启悬浮窗、立即开始、暂停/继续、停止、保存配置。
   - 悬浮窗启动闸门：动作悬浮窗与定时悬浮窗启动前统一检查 `悬浮窗/无障碍/电池优化` 三项权限，缺失时自动跳转对应设置页并提示，阻止启动。
   - 动作列表：支持 `点击/滑动/Home/Back/多任务` 添加、编辑、删除与上下调整顺序；编辑弹窗调用现有 `updatePointConfig` 更新逻辑，删除调用 `removePoint`，顺序调整调用 `movePointOrder` 并立即自动保存。
+  - 软件提示：由 `HitokotoClient` 在 IO 协程异步请求 `https://international.v1.hitokoto.cn/`，按 `hitokoto---from` 展示；加载和失败状态有独立文案，刷新失败保留当前已获取句子。
+  - 页面底部“全局配置”：Miuix `SuperSwitch` 控制“重启后清除定时点击设置”，应用进程重启时生效，页面重建不会清除定时。
 
 ## 5. 自动点击数据模块（Models + Repository）
 - 作用：定义自动点击数据结构并提供本地 JSON 持久化。
@@ -87,6 +89,7 @@
     - `TimeSyncState`
   - 存储位置：`filesDir` 私有目录（`autoclick/profiles/*.json`、`autoclick/state.json`）。
   - 兼容策略：旧 JSON 缺失新增字段时自动回填默认值，不破坏历史配置。
+  - 定时字段随本地配置持久化；应用首次初始化时，根据全局偏好决定先清除所有配置的定时或恢复当前配置未过期的定时。取消时立即保存清除后的执行时间；到点触发先清除内存中的待执行时间，并异步保存，避免磁盘写入拖慢点击。导入、复制及另存的新配置不继承待执行定时。
 
 ## 6. 自动点击协调模块（AutoClickCoordinator）
   - 作用：统一页面、悬浮窗、无障碍服务的状态与操作入口。
@@ -100,6 +103,7 @@
     - 轮询对齐时钟触发（20~50ms 级轮询）
     - 定时触发执行时使用“当前配置快照”的运行方式（运行一次按 `cycleCount` 重复整套脚本 / 循环运行）
     - NTP 校时（`syncNtpTime` / `updateNtpServer` / `currentAlignedNowMillis`）
+    - 每个定时任务使用独立 `ScheduleTimeSyncGate`，在实际执行时间（含提前毫秒）前 60 秒异步强制校时一次；不足 60 秒立即执行，校时后的时钟回拨不会重复请求。取消、替换任务后旧轮询停止。
     - 启动/暂停/继续/停止执行
     - 自动点击配置保存、加载、删除与列表刷新
 
@@ -187,7 +191,12 @@
 - 实现方法：
   - 文件：`app/src/main/java/com/example/littleclicker/autoclick/SntpClient.kt`
   - 输出：`offsetMillis`、`delayMillis`、`serverHost`。
-  - 失败兜底：由协调器回退到本机时间，不阻塞定时功能。
+  - 失败兜底：同一服务器已经成功校时后，刷新失败保留上次偏移；从未成功校时则回退到本机时间。校时不阻塞定时轮询，协程取消不作为网络失败处理。
+
+## 16. 全局偏好模块（GlobalPreferences）
+- `global_preferences.xml` 独立保存 `clear_schedule_on_restart`，默认 `true`，延续原有启动清除行为。
+- 偏好通过 `StateFlow` 供 UI 订阅，修改后立即持久化，不随点击配置导入、复制或切换。
+- 初始化顺序：加载偏好和当前配置 → 按需清除所有配置的定时 → 恢复定时 → 启动自动保存，避免先恢复后清除造成抢先触发。
 
 ## 13. 定时悬浮窗模块（TimerFloatingWindowService）
 - 作用：提供独立于动作编辑悬浮窗的定时状态浮窗。
